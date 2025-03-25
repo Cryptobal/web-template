@@ -114,3 +114,24 @@ Automatización del ciclo de vida del desarrollo.
 ## 🧠 Contribuciones
 
 Los equipos pueden proponer mejoras a las reglas base mediante Pull Requests al repositorio principal. Todas las mejoras serán evaluadas para su incorporación en la fábrica.
+
+# 🏗️ Web Starter Template — Fábrica de Sitios Web
+
+Este repositorio es un **template base reutilizable** para crear sitios web modernos con:
+
+- ✅ Next.js + App Router
+- ✅ TailwindCSS (JIT)
+- ✅ Reglas `.mdc` en `.cursor/rules/`
+- ✅ Contenido en Markdown (`/docs`)
+- ✅ Componentes reutilizables (`/components`)
+- ✅ Configuración para Vercel y Cloudflare
+
+---
+
+## 🚀 Cómo usar este template
+
+```bash
+npx degit Cryptobal/web-template mi-nueva-web
+cd mi-nueva-web
+pnpm install # o npm install
+pnpm dev     # o npm run dev

@@ -31,9 +31,6 @@ yarn-error.log*
 *.swp
 *.swo
 
-# Cursor
-.cursor/ 
-
 # Sistemas operativos
 .DS_Store
 Thumbs.db
@@ -45,8 +42,6 @@ node_modules/
 # Entornos virtuales adicionales
 .venv/
 
-# Archivos de Cursor
-.cursor/
 
 # Archivos de producción (si generas html, css, js en build)
 build/
