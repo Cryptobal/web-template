@@ -33,3 +33,25 @@ yarn-error.log*
 
 # Cursor
 .cursor/ 
+
+# Sistemas operativos
+.DS_Store
+Thumbs.db
+
+# Node y frontend
+node_modules/
+*.lock
+
+# Entornos virtuales adicionales
+.venv/
+
+# Archivos de Cursor
+.cursor/
+
+# Archivos de producción (si generas html, css, js en build)
+build/
+dist/
+out/
+
+# Configuración
+*.config.js
