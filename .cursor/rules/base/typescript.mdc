@@ -1,0 +1,399 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: typescript.mdc
+
+## 🎯 Propósito
+Establecer las convenciones, configuración y mejores prácticas para implementar TypeScript en el proyecto. El objetivo es asegurar tipado estricto, prevención de errores, mantenibilidad del código y máxima productividad del desarrollador.
+
+---
+
+## ⚙️ Configuración Base (tsconfig.json)
+
+```json
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+---
+
+## 📁 Estructura de tipos
+
+### Directorio para tipos globales
+```
+/types/
+  index.ts       # Exportaciones principales
+  api.types.ts   # Tipos para APIs
+  props.types.ts # Tipos para props de componentes
+  data.types.ts  # Tipos para estructuras de datos
+  forms.types.ts # Tipos para formularios
+```
+
+### Tipos locales
+Los tipos específicos a un componente o módulo deben mantenerse junto al código:
+```
+/components/Product/
+  Product.tsx
+  product.types.ts  # Tipos específicos del componente
+```
+
+---
+
+## 🧠 Convenciones de nombrado
+
+### Interfaces vs Types
+- Usar `interface` para definir la forma de objetos
+- Usar `type` para uniones, intersecciones o tipos primitivos
+
+```typescript
+// Para objetos
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Para uniones, alias, etc.
+type UserRole = 'admin' | 'editor' | 'viewer';
+type ID = string | number;
+```
+
+### Nomenclatura
+- PascalCase para interfaces, tipos y clases
+- camelCase para variables, funciones, métodos
+- Sufijo `Props` para props de componentes
+- Prefijo `I` o sufijo `Type` NO recomendados
+
+---
+
+## 🛡️ Estricto tipado
+
+### Reglas clave
+- Evitar `any` - usar `unknown` si es necesario
+- Habilitar `strict: true` en tsconfig.json
+- Preferir tipos explícitos en lugar de inferencia para APIs
+- Usar tipos genéricos para mejorar reutilización
+
+### Validación de datos
+Utilizar zod para validación de datos externos:
+
+```typescript
+import { z } from 'zod';
+
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(2),
+  email: z.string().email(),
+});
+
+type User = z.infer<typeof UserSchema>;
+
+// Validar datos
+function validateUser(data: unknown): User {
+  return UserSchema.parse(data);
+}
+```
+
+---
+
+## 🧩 Tipos utilitarios
+
+### Helpers recomendados
+```typescript
+// Tipo para estados de carga
+type LoadingState<T> = 
+  | { status: 'loading' }
+  | { status: 'error', error: Error }
+  | { status: 'success', data: T };
+
+// Tipo para hacer opcionales todas las propiedades
+type Optional<T> = { [K in keyof T]?: T[K] };
+
+// Tipo para hacer solo lectura todas las propiedades
+type Readonly<T> = { readonly [K in keyof T]: T[K] };
+```
+
+---
+
+## 📝 Documentación con JSDoc
+
+Documentar funciones y tipos complejos con JSDoc:
+
+```typescript
+/**
+ * Calcula el total de un pedido con impuestos.
+ * @param items - Array de items del pedido
+ * @param taxRate - Tasa de impuesto (0.19 = 19%)
+ * @returns El total calculado con impuestos
+ */
+function calculateOrderTotal(
+  items: OrderItem[],
+  taxRate: number
+): number {
+  // implementación
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Esta regla aplica a todos los archivos `.ts` y `.tsx`
+- Se debe preferir siempre `strict: true` en tsconfig.json
+- Todos los props de componentes deben tener tipos explícitos
+- Las APIs deben tener tipado de entrada y salida
+- Evitar el uso de `any` en favor de `unknown` cuando sea necesario
+- Usar zod para validar datos externos
+- Los tipos complejos deben ser documentados con JSDoc
+- Los componentes genéricos deben utilizar tipos genéricos
+- Preferir interfaces para contratos públicos y types para implementaciones privadas 
+
+---
+
+## 🌩️ TypeScript para Vercel y Cloudflare
+
+### Configuración para Edge Functions de Vercel
+
+```typescript
+// types/edge.d.ts
+/// <reference types="@vercel/edge" />
+
+// Tipos para variables de entorno en Edge Runtime
+declare namespace NodeJS {
+  interface ProcessEnv {
+    readonly VERCEL_URL: string;
+    readonly VERCEL_ENV: 'development' | 'preview' | 'production';
+    readonly VERCEL_REGION: string;
+    readonly EDGE_CONFIG: string;
+  }
+}
+
+// Ampliar tipos de Next.js para Edge Functions
+declare module 'next/server' {
+  interface NextRequest {
+    geo?: {
+      city?: string;
+      country?: string;
+      region?: string;
+      countryRegion?: string;
+      latitude?: string;
+      longitude?: string;
+    };
+    ip?: string;
+  }
+}
+```
+
+### Configuración para Cloudflare Workers
+
+```typescript
+// types/cloudflare.d.ts
+interface Env {
+  // Ejemplo de binding a KV namespace
+  USERS_KV: KVNamespace;
+  
+  // Ejemplo de binding a Durable Object
+  COUNTER: DurableObjectNamespace;
+  
+  // Variables de entorno
+  API_KEY: string;
+  API_URL: string;
+  
+  // R2 binding
+  ASSETS: R2Bucket;
+}
+
+// Tipos para Cloudflare Workers
+interface RequestWithCloudflare extends Request {
+  cf?: {
+    // Información de Cloudflare sobre la petición
+    asn: number;
+    botManagement?: {
+      score: number;
+      verifiedBot: boolean;
+    };
+    city?: string;
+    clientTcpRtt: number;
+    colo: string;
+    country: string;
+    httpProtocol: string;
+    latitude?: string;
+    longitude?: string;
+    region?: string;
+    regionCode?: string;
+    timezone: string;
+  };
+}
+```
+
+### Optimización de tsconfig.json para Vercel
+
+```json
+// tsconfig.json optimizado para Vercel
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    },
+    // Optimizaciones para Vercel y Edge Functions
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "types/*.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
+```
+
+### Optimización de Edge Functions con TypeScript
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+// Tipo específico para Vercel Edge con Geolocalización
+type VercelEdgeInfo = {
+  countryCode: string;
+  region?: string;
+  city?: string;
+  isEU: boolean;
+};
+
+// Función helper para extraer información de Vercel Edge
+function getEdgeInfo(request: NextRequest): VercelEdgeInfo {
+  const geo = request.geo || {};
+  
+  return {
+    countryCode: geo.country || 'US',
+    region: geo.region,
+    city: geo.city,
+    isEU: ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'].includes(geo.country || ''),
+  };
+}
+
+export function middleware(request: NextRequest) {
+  const edgeInfo = getEdgeInfo(request);
+  
+  // Redirección basada en país
+  if (edgeInfo.countryCode === 'MX' && !request.nextUrl.pathname.startsWith('/mx')) {
+    return NextResponse.redirect(new URL('/mx', request.url));
+  }
+  
+  // Headers específicos basados en región para Cloudflare
+  const response = NextResponse.next();
+  response.headers.set('X-Country', edgeInfo.countryCode);
+  
+  // GDPR/Cookie consent para usuarios de la UE
+  if (edgeInfo.isEU) {
+    response.headers.set('X-EU-Consent-Required', 'true');
+  }
+  
+  return response;
+}
+```
+
+### Tipos para Cloudflare Workers KV
+
+```typescript
+// lib/kv/user.ts
+import { z } from 'zod';
+
+// Validación con Zod para KV
+export const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(2),
+  email: z.string().email(),
+  created: z.string().datetime(),
+  preferences: z.object({
+    theme: z.enum(['light', 'dark', 'system']),
+    newsletter: z.boolean(),
+  }).optional(),
+});
+
+export type User = z.infer<typeof UserSchema>;
+
+// Funciones tipo para trabajar con KV
+export async function getUserFromKV(env: Env, userId: string): Promise<User | null> {
+  const data = await env.USERS_KV.get(userId, { type: 'json' });
+  
+  if (!data) return null;
+  
+  try {
+    // Validar datos con zod
+    return UserSchema.parse(data);
+  } catch (error) {
+    console.error('Invalid user data format', error);
+    return null;
+  }
+}
+```
+
+---
+
+## 🛠️ Reglas adicionales para Vercel y Cloudflare
+
+- Usar tipos específicos para Edge Functions de Vercel
+- Implementar tipado estricto para Cloudflare Workers y KV
+- Validar datos de KV/R2/D1 de Cloudflare con Zod
+- Configurar tsconfig.json con optimizaciones específicas para Vercel
+- Utilizar tipos genéricos para componentes reutilizables en Edge
+- Implementar tipado para direccionamiento geográfico con Edge Functions
+- Mantener declaraciones de tipos actualizadas para APIs de Cloudflare
+- Usar utility types específicos para manejo de cache y headers
+- Implementar Path Aliases optimizados para importaciones en Vercel
+- Configurar strict type checking para todos los archivos en Edge Runtime 

@@ -1,0 +1,333 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: cloudflare-vercel-integracion.mdc
+
+## 🎯 Propósito
+Establecer la configuración óptima para integrar Cloudflare como CDN y servicios de seguridad con Vercel como plataforma de hosting, aprovechando las mejores características de ambas plataformas y optimizando el rendimiento, la seguridad y la escalabilidad del sitio web.
+
+---
+
+## 🌐 Arquitectura de integración
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│                 │     │                 │     │                 │
+│   USUARIOS      │────▶│   CLOUDFLARE    │────▶│     VERCEL      │
+│                 │     │   (CDN/Proxy)   │     │   (Hosting)     │
+│                 │     │                 │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                               │                         │
+                               │                         │
+                               ▼                         ▼
+                        ┌─────────────────┐     ┌─────────────────┐
+                        │  CLOUDFLARE     │     │  VERCEL         │
+                        │  WORKERS        │     │  EDGE FUNCTIONS │
+                        │  (Lógica Edge)  │     │  (Middleware)   │
+                        └─────────────────┘     └─────────────────┘
+```
+
+---
+
+## 🔗 Configuración de DNS y dominios
+
+### 1. Registro de dominio en Cloudflare
+
+```
+1. Registrar el dominio en Cloudflare o transferirlo
+2. Verificar que los nameservers estén configurados correctamente:
+   - beth.ns.cloudflare.com
+   - cruz.ns.cloudflare.com
+```
+
+### 2. Configuración de dominio en Vercel
+
+```
+1. Desde el Dashboard de Vercel > [Proyecto] > Settings > Domains
+2. Añadir dominio personalizado: "tusitio.com"
+3. Seleccionar "Verificación a través de archivos DNS"
+4. No añadir registros DNS automáticamente
+```
+
+### 3. Configuración DNS en Cloudflare
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > DNS
+2. Añadir los siguientes registros:
+   - Tipo: A, Nombre: @, Valor: 76.76.21.21, Proxy: ACTIVADO (naranja)
+   - Tipo: CNAME, Nombre: www, Valor: cname.vercel-dns.com, Proxy: ACTIVADO (naranja)
+3. Configurar registro CAA si es necesario
+```
+
+---
+
+## 🔒 Configuración SSL/TLS
+
+### 1. Configuración en Cloudflare
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > SSL/TLS > Overview
+2. Establecer modo SSL: Full (strict)
+3. En Edge Certificates:
+   - Activar Always Use HTTPS
+   - Activar Minimum TLS Version: TLS 1.2
+   - Activar Opportunistic Encryption
+   - Activar TLS 1.3
+```
+
+### 2. Configuración en Vercel
+
+```
+1. Dashboard de Vercel > [Proyecto] > Settings > SSL
+2. Verificar que el certificado está activo
+3. No es necesario configurar certificados personalizados (Cloudflare lo maneja)
+```
+
+---
+
+## 🚀 Optimización de caché y rendimiento
+
+### 1. Configuración de Page Rules en Cloudflare
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Rules > Page Rules
+2. Crear reglas para contenido estático:
+   - URL: "https://tusitio.com/static/*"
+   - Configuración: Cache Level: Cache Everything, Edge Cache TTL: 1 month
+3. Crear regla para archivos de fuentes:
+   - URL: "https://tusitio.com/fonts/*"
+   - Configuración: Cache Level: Cache Everything, Browser Cache TTL: 1 year
+```
+
+### 2. Configuración en Vercel para optimizar Cloudflare
+
+```javascript
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+          {
+            key: 'CDN-Cache-Control',
+            value: 'public, max-age=31536000',
+          },
+        ],
+      },
+      {
+        source: '/_next/image',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=31536000',
+          },
+          {
+            key: 'CDN-Cache-Control',
+            value: 'public, max-age=86400',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+### 3. Activar Automatic Platform Optimization (APO)
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Speed > Optimization
+2. Activar Automatic Platform Optimization for WordPress (funciona con Next.js también)
+3. Configuraciones recomendadas:
+   - Activar Mirage (optimización de imágenes)
+   - Activar Rocket Loader (optimizar carga de JavaScript)
+   - Activar "Auto Minify" para HTML, CSS y JavaScript
+```
+
+---
+
+## 🛡️ Protección y seguridad
+
+### 1. Firewall y WAF de Cloudflare
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Security > WAF
+2. Activar conjunto de reglas administrado para:
+   - OWASP Core Rule Set
+   - Cloudflare Managed Rules
+3. Crear reglas personalizadas para bloquear países específicos si es necesario
+4. Configurar Rate Limiting para prevenir ataques de fuerza bruta:
+   - Rate: 100 requests/minute
+   - Aplicar a: /api/*, /login, /admin/*
+```
+
+### 2. Configuración de seguridad en encabezados HTTP
+
+```javascript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Headers de seguridad
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' *.vercel-insights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: *.cloudflare.com; connect-src 'self' *.vercel-insights.com"
+  );
+  
+  return response;
+}
+```
+
+### 3. Protección contra bots maliciosos
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Security > Bots
+2. Activar Bot Fight Mode
+3. Configurar Super Bot Fight Mode (requiere plan Business o Enterprise)
+4. Para formularios críticos, activar Cloudflare Turnstile (alternativa a CAPTCHA)
+```
+
+---
+
+## 📊 Analytics e Insights
+
+### 1. Configuración de Cloudflare Analytics
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Analytics & Logs
+2. Activar Web Analytics
+3. (Opcional) Configurar Log Retention si se necesita un análisis más detallado
+```
+
+### 2. Integración con Vercel Analytics
+
+```typescript
+// app/layout.tsx
+import { Analytics } from '@vercel/analytics/react';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <body>
+        {children}
+        <Analytics />
+      </body>
+    </html>
+  );
+}
+```
+
+### 3. Monitoreo de rendimiento
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Speed > Optimization
+2. Revisar Core Web Vitals y métricas de rendimiento
+3. Configurar alertas para caídas de rendimiento
+```
+
+---
+
+## 🔄 Orquestación Edge (Workers + Edge Functions)
+
+### 1. Cloudflare Workers para procesamiento regional
+
+```javascript
+// workers/geo-redirect.js
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const country = request.headers.get('cf-ipcountry') || 'US';
+    
+    // Redireccionar según país
+    if (country === 'MX' && !url.pathname.startsWith('/mx')) {
+      return Response.redirect(`${url.origin}/mx${url.pathname}`, 302);
+    }
+    
+    // Pasar a Vercel si no hay redirección
+    return fetch(request);
+  }
+};
+```
+
+### 2. Vercel Edge Functions para A/B Testing
+
+```typescript
+// app/middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export const config = {
+  matcher: ['/'],
+};
+
+export function middleware(request: NextRequest) {
+  // Determinar grupo de prueba
+  const bucketA = Math.random() < 0.5;
+  
+  // Clonar la respuesta
+  const response = NextResponse.next();
+  
+  // Añadir header para renderizado condicional
+  response.cookies.set('ab-test-bucket', bucketA ? 'A' : 'B');
+  
+  return response;
+}
+```
+
+### 3. Coordinación entre Workers y Edge Functions
+
+```typescript
+// Para datos compartidos y consistencia entre Cloudflare y Vercel
+// 1. Usar Cloudflare KV para almacenamiento:
+export async function getSharedConfig(request: NextRequest) {
+  const configUrl = 'https://api.cloudflare.com/client/v4/accounts/{account_id}/storage/kv/namespaces/{namespace_id}/values/config';
+  
+  const response = await fetch(configUrl, {
+    headers: {
+      'Authorization': `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+    },
+  });
+  
+  return await response.json();
+}
+
+// 2. Usar Vercel Edge Config como alternativa:
+import { createClient } from '@vercel/edge-config';
+const client = createClient(process.env.EDGE_CONFIG);
+
+export async function getConfig(key: string) {
+  return await client.get(key);
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Usar Cloudflare como proxy para todo el tráfico (DNS proxied)
+- Configurar siempre SSL/TLS en modo Full (strict)
+- Implementar Page Rules de Cloudflare para caché óptimo de assets
+- Configurar headers de caché adecuados según tipo de contenido
+- Habilitar Automatic Platform Optimization (APO) en Cloudflare
+- Usar Turnstile para formularios críticos en lugar de CAPTCHA
+- Implementar Edge Functions de Vercel para lógica sensible a latencia
+- Usar Workers KV para almacenamiento compartido entre servicios edge
+- Configurar WAF con reglas personalizadas según necesidades del proyecto
+- Implementar monitoreo doble: Vercel Analytics + Cloudflare Analytics

@@ -1,0 +1,818 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: state-management.mdc
+
+## 🎯 Propósito
+Estandarizar la arquitectura de estado en el frontend, asegurando rendimiento, mantenibilidad, y separación clara entre:
+- Estado local (componentes individuales)
+- Estado global compartido (aplicación completa)
+- Datos remotos (APIs, CMS)
+- Mutaciones optimistas (cambios inmediatos con actualización posterior)
+
+---
+
+## ✅ Tecnologías y herramientas
+
+- **Zustand**: Estado global reactivo, modular y ligero
+- **Context API**: Para temas, autenticación y estados UI limitados
+- **SWR**: Para fetching simple con cache y revalidación automática
+- **React Query (TanStack Query)**: Para APIs complejas, mutaciones y sincronización avanzada
+- **Server Actions**: Para mutaciones con feedback inmediato (Next.js App Router)
+
+---
+
+## 🧩 Cuándo usar cada solución
+
+### 1. Estado local (`useState`, `useReducer`)
+- Formularios
+- Modales/popups
+- Tabs y estados de UI específicos del componente
+- Estados temporales que no afectan a otros componentes
+
+```tsx
+// ✅ Buen uso de estado local
+function ContactForm() {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    message: ''
+  });
+  
+  // Resto del componente...
+}
+```
+
+### 2. Zustand (Estado global)
+- Carrito de compras
+- Preferencias de usuario
+- Configuración de UI global
+- Autenticación (cuando no requiere SSR)
+- Estados que afectan a múltiples páginas/componentes
+
+```tsx
+// lib/stores/cartStore.ts
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+interface CartStore {
+  items: CartItem[];
+  itemCount: number;
+  totalPrice: number;
+  addItem: (item: CartItem) => void;
+  removeItem: (id: string) => void;
+  clearCart: () => void;
+}
+
+export const useCartStore = create<CartStore>()(
+  persist(
+    (set, get) => ({
+      items: [],
+      itemCount: 0,
+      totalPrice: 0,
+      
+      addItem: (item) => {
+        const items = get().items;
+        const existingItem = items.find(i => i.id === item.id);
+        
+        if (existingItem) {
+          const updatedItems = items.map(i => 
+            i.id === item.id 
+              ? { ...i, quantity: i.quantity + 1 } 
+              : i
+          );
+          
+          set(state => ({
+            items: updatedItems,
+            itemCount: state.itemCount + 1,
+            totalPrice: state.totalPrice + item.price
+          }));
+        } else {
+          set(state => ({
+            items: [...state.items, item],
+            itemCount: state.itemCount + 1,
+            totalPrice: state.totalPrice + item.price
+          }));
+        }
+      },
+      
+      removeItem: (id) => {
+        const items = get().items;
+        const itemToRemove = items.find(i => i.id === id);
+        
+        if (!itemToRemove) return;
+        
+        set(state => ({
+          items: state.items.filter(i => i.id !== id),
+          itemCount: state.itemCount - itemToRemove.quantity,
+          totalPrice: state.totalPrice - (itemToRemove.price * itemToRemove.quantity)
+        }));
+      },
+      
+      clearCart: () => set({ items: [], itemCount: 0, totalPrice: 0 }),
+    }),
+    {
+      name: 'cart-storage',
+      partialize: (state) => ({ items: state.items }),
+    }
+  )
+);
+```
+
+### 3. Context API (Estado compartido limitado)
+- Temas (dark/light mode)
+- Contextos específicos que no cambian frecuentemente
+- Internacionalización/idiomas
+- Cuando la propagación de props es excesiva
+
+```tsx
+// lib/contexts/ThemeContext.tsx
+import { createContext, useContext, useState, useEffect } from 'react';
+
+type Theme = 'light' | 'dark';
+
+interface ThemeContextType {
+  theme: Theme;
+  toggleTheme: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<Theme>('light');
+  
+  useEffect(() => {
+    // Recuperar tema guardado en localStorage
+    const savedTheme = localStorage.getItem('theme') as Theme;
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+    }
+  }, []);
+  
+  const toggleTheme = () => {
+    setTheme(current => {
+      const newTheme = current === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', newTheme);
+      document.documentElement.classList.toggle('dark', newTheme === 'dark');
+      return newTheme;
+    });
+  };
+  
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
+}
+```
+
+### 4. SWR (Fetching simple)
+- Datos que cambian poco
+- Cuando se necesita caché y revalidación simple
+- Endpoints REST simples
+- Páginas con pocos requerimientos de datos
+
+```tsx
+// lib/hooks/usePosts.ts
+import useSWR from 'swr';
+
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
+export function usePosts() {
+  const { data, error, isLoading, mutate } = useSWR('/api/posts', fetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: true,
+    dedupingInterval: 60000 // 1 minuto
+  });
+  
+  return {
+    posts: data,
+    isLoading,
+    isError: error,
+    refresh: mutate
+  };
+}
+
+// En un componente
+function BlogList() {
+  const { posts, isLoading, isError } = usePosts();
+  
+  if (isLoading) return <Skeleton />;
+  if (isError) return <ErrorMessage />;
+  
+  return (
+    <div>
+      {posts.map(post => (
+        <PostCard key={post.id} post={post} />
+      ))}
+    </div>
+  );
+}
+```
+
+### 5. React Query (APIs complejas)
+- Datos con dependencias complejas
+- Múltiples endpoints relacionados
+- Cuando se requiere control granular sobre revalidación
+- Mutaciones con lógica de actualización compleja
+- Optimistic updates sofisticados
+
+```tsx
+// lib/queries/useProducts.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+const API_URL = '/api/products';
+
+// Obtener listado de productos con filtros
+export function useProducts(category?: string, sort?: string) {
+  const queryKey = ['products', { category, sort }];
+  
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      const url = new URL(API_URL, window.location.origin);
+      if (category) url.searchParams.append('category', category);
+      if (sort) url.searchParams.append('sort', sort);
+      
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Error fetching products');
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+  });
+}
+
+// Obtener un producto específico
+export function useProduct(id: string) {
+  return useQuery({
+    queryKey: ['product', id],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/${id}`);
+      if (!res.ok) throw new Error('Error fetching product');
+      return res.json();
+    },
+    enabled: !!id,
+  });
+}
+
+// Actualizar un producto (mutación)
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (!res.ok) throw new Error('Error updating product');
+      return res.json();
+    },
+    onMutate: async ({ id, data }) => {
+      // Cancelar queries en curso
+      await queryClient.cancelQueries({ queryKey: ['product', id] });
+      
+      // Guardar estado previo
+      const previousProduct = queryClient.getQueryData(['product', id]);
+      
+      // Actualizar optimistamente
+      queryClient.setQueryData(['product', id], (old: any) => ({
+        ...old,
+        ...data,
+      }));
+      
+      // Devolver contexto con estado previo
+      return { previousProduct, id };
+    },
+    onError: (err, variables, context) => {
+      // Revertir a estado previo en caso de error
+      if (context?.previousProduct) {
+        queryClient.setQueryData(
+          ['product', context.id],
+          context.previousProduct
+        );
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Invalidar queries para refrescar datos
+      queryClient.invalidateQueries({ queryKey: ['product', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+```
+
+### 6. Server Actions (Mutaciones con Next.js App Router)
+- Operaciones críticas (pagos, formularios importantes)
+- Cuando se requiere validación en servidor
+- Operaciones con seguridad adicional
+- Cuando se necesita evitar APIs intermedias
+
+```tsx
+// app/actions/contact.ts
+'use server';
+
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+
+// Esquema de validación
+const ContactSchema = z.object({
+  name: z.string().min(3, 'Nombre requerido'),
+  email: z.string().email('Email inválido'),
+  message: z.string().min(10, 'Mensaje demasiado corto'),
+});
+
+export async function submitContactForm(formData: FormData) {
+  // 1. Extraer y validar datos
+  const rawData = {
+    name: formData.get('name'),
+    email: formData.get('email'),
+    message: formData.get('message'),
+  };
+  
+  const validationResult = ContactSchema.safeParse(rawData);
+  
+  if (!validationResult.success) {
+    return {
+      ok: false,
+      errors: validationResult.error.flatten().fieldErrors,
+    };
+  }
+  
+  // 2. Procesar datos (enviar a API externa, DB, etc.)
+  try {
+    // Ejemplo: enviar a API externa
+    const response = await fetch('https://api.tusitio.com/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validationResult.data),
+    });
+    
+    if (!response.ok) throw new Error('Error enviando mensaje');
+    
+    // 3. Revalidar cache si es necesario
+    revalidatePath('/contacto');
+    
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      errors: { form: ['Error enviando el mensaje. Intente nuevamente.'] },
+    };
+  }
+}
+
+// Uso en un componente
+// app/contacto/page.tsx
+import { submitContactForm } from '../actions/contact';
+
+export default function ContactPage() {
+  return (
+    <form action={submitContactForm}>
+      {/* Campos del formulario */}
+      <button type="submit">Enviar</button>
+    </form>
+  );
+}
+```
+
+---
+
+## 🗂️ Estructura de carpetas recomendada
+
+```
+/app
+/lib
+  /queries          // React Query hooks
+    useProducts.ts
+    useUsers.ts
+  /hooks            // SWR hooks y hooks personalizados 
+    usePosts.ts
+    useCart.ts
+  /stores           // Zustand stores
+    cartStore.ts
+    uiStore.ts
+  /contexts         // React Context providers
+    ThemeContext.tsx
+    AuthContext.tsx
+  /actions          // Server Actions
+    contact.ts
+    newsletter.ts
+```
+
+---
+
+## 🚀 Mejores prácticas de rendimiento
+
+### 1. Evitar renders innecesarios
+
+```tsx
+// ❌ MAL: Re-render de toda la lista 
+function ProductList() {
+  const { products } = useProducts();
+  
+  return (
+    <div>
+      {products.map(product => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+      <CartButton count={useCartStore().itemCount} />
+    </div>
+  );
+}
+
+// ✅ MEJOR: Selección específica con selector
+function ProductList() {
+  const { products } = useProducts();
+  
+  return (
+    <div>
+      {products.map(product => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+      <MemoizedCartButton />
+    </div>
+  );
+}
+
+// Componente optimizado
+const MemoizedCartButton = memo(function CartButton() {
+  // Selector: sólo se actualiza cuando itemCount cambia
+  const itemCount = useCartStore(state => state.itemCount);
+  
+  return <button>Cart ({itemCount})</button>;
+});
+```
+
+### 2. Zustand con segmentación
+
+```tsx
+// ❌ MAL: Store monolítico
+const useAppStore = create<{
+  cart: CartItem[];
+  user: User | null;
+  ui: UISettings;
+  // Métodos...
+}>()((set) => ({
+  /* implementación */
+}));
+
+// ✅ MEJOR: Stores separados por dominio
+const useCartStore = create<CartStore>()((set) => ({
+  /* implementación del carrito */
+}));
+
+const useUserStore = create<UserStore>()((set) => ({
+  /* implementación del usuario */
+}));
+
+const useUIStore = create<UIStore>()((set) => ({
+  /* implementación de UI */
+}));
+```
+
+### 3. Manejo eficiente de Cache
+
+```tsx
+// Configuración global de React Query
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60, // 1 minuto
+      gcTime: 1000 * 60 * 5, // 5 minutos
+      retry: 1,
+      refetchOnWindowFocus: process.env.NODE_ENV === 'production',
+    },
+  },
+});
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {process.env.NODE_ENV !== 'production' && <ReactQueryDevtools />}
+    </QueryClientProvider>
+  );
+}
+```
+
+---
+
+## 🔄 Sincronización con URL
+
+### 1. Sincronizar filtros con URL
+
+```tsx
+// app/productos/page.tsx
+'use client';
+
+import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useTransition } from 'react';
+
+export default function ProductsPage() {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  
+  // Obtener filtros actuales de la URL
+  const category = searchParams.get('category') || '';
+  const sort = searchParams.get('sort') || 'newest';
+  
+  // Estados locales para manejo de filtros
+  const [filters, setFilters] = useState({
+    category,
+    sort,
+  });
+  
+  // Actualizar URL cuando cambian los filtros
+  useEffect(() => {
+    if (filters.category === category && filters.sort === sort) return;
+    
+    startTransition(() => {
+      const params = new URLSearchParams();
+      if (filters.category) params.set('category', filters.category);
+      if (filters.sort) params.set('sort', filters.sort);
+      
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  }, [filters, pathname, router, category, sort]);
+  
+  // Fetch products con react-query
+  const { data: products, isLoading } = useProducts(category, sort);
+  
+  // Resto del componente...
+}
+```
+
+### 2. Estado persistente en navegación
+
+```tsx
+// lib/hooks/usePersistentState.ts
+import { useState, useEffect } from 'react';
+
+export function usePersistentState<T>(key: string, initialValue: T) {
+  const [state, setState] = useState<T>(() => {
+    // Inicializar desde localStorage si existe
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          return JSON.parse(saved) as T;
+        } catch (e) {
+          console.error(`Error parsing saved state for ${key}:`, e);
+        }
+      }
+    }
+    return initialValue;
+  });
+  
+  // Sincronizar con localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(state));
+    }
+  }, [key, state]);
+  
+  return [state, setState] as const;
+}
+```
+
+---
+
+## 🔌 Integración con CMS y APIs externas
+
+### 1. Integración con Contentful
+
+```tsx
+// lib/contentful/client.ts
+import { createClient } from 'contentful';
+
+export const contentfulClient = createClient({
+  space: process.env.CONTENTFUL_SPACE_ID!,
+  accessToken: process.env.CONTENTFUL_ACCESS_TOKEN!,
+  environment: process.env.CONTENTFUL_ENVIRONMENT || 'master',
+});
+
+// lib/contentful/getBlogPosts.ts
+import { contentfulClient } from './client';
+import type { Entry, EntryCollection } from 'contentful';
+import type { IBlogPostFields } from './types';
+
+export async function getBlogPosts(options: {
+  limit?: number;
+  skip?: number;
+  tag?: string;
+} = {}) {
+  try {
+    const entries: EntryCollection<IBlogPostFields> = await contentfulClient.getEntries({
+      content_type: 'blogPost',
+      order: '-sys.createdAt',
+      limit: options.limit || 10,
+      skip: options.skip || 0,
+      ...(options.tag && { 'metadata.tags.sys.id[in]': options.tag }),
+    });
+    
+    return entries;
+  } catch (error) {
+    console.error('Error fetching blog posts:', error);
+    throw error;
+  }
+}
+
+// En componente con React Query
+import { useQuery } from '@tanstack/react-query';
+import { getBlogPosts } from '@/lib/contentful/getBlogPosts';
+
+export function useBlogPosts(options = {}) {
+  return useQuery({
+    queryKey: ['blog-posts', options],
+    queryFn: () => getBlogPosts(options),
+    staleTime: 1000 * 60 * 5, // 5 minutos
+  });
+}
+```
+
+### 2. Integración con REST API genérica
+
+```tsx
+// lib/api/client.ts
+export class APIClient {
+  private baseUrl: string;
+  private defaultHeaders: HeadersInit;
+  
+  constructor(
+    baseUrl: string = process.env.NEXT_PUBLIC_API_URL || '/api',
+    defaultHeaders: HeadersInit = {}
+  ) {
+    this.baseUrl = baseUrl;
+    this.defaultHeaders = {
+      'Content-Type': 'application/json',
+      ...defaultHeaders,
+    };
+  }
+  
+  async get<T>(path: string, params?: Record<string, string>): Promise<T> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.append(key, value);
+      });
+    }
+    
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: this.defaultHeaders,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+  
+  async post<T>(path: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: this.defaultHeaders,
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+  
+  // Implementar put, delete, etc.
+}
+
+export const apiClient = new APIClient();
+
+// Uso con React Query
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
+
+export function useServices() {
+  return useQuery({
+    queryKey: ['services'],
+    queryFn: () => apiClient.get<Service[]>('/services'),
+  });
+}
+
+export function useAddService() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (newService: ServiceInput) => 
+      apiClient.post<Service>('/services', newService),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
+  });
+}
+```
+
+---
+
+## 🐛 Herramientas de debug
+
+### 1. Zustand DevTools
+
+```tsx
+// lib/stores/store.ts
+import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+
+interface AppState {
+  counter: number;
+  increment: () => void;
+}
+
+export const useAppStore = create<AppState>()(
+  devtools(
+    (set) => ({
+      counter: 0,
+      increment: () => set((state) => ({ counter: state.counter + 1 })),
+    }),
+    {
+      name: 'App Store',
+      enabled: process.env.NODE_ENV !== 'production',
+    }
+  )
+);
+```
+
+### 2. React Query DevTools
+
+```tsx
+// app/providers.tsx
+'use client';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { useState } from 'react';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000,
+          },
+        },
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {process.env.NODE_ENV !== 'production' && <ReactQueryDevtools />}
+    </QueryClientProvider>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Separar siempre la lógica de estado de la UI
+- Preferir hooks personalizados para encapsular lógica de estado
+- Evitar useState/useReducer para estado global
+- Organizar stores de Zustand por dominio funcional (cart, user, ui)
+- Usar selectores en Zustand para prevenir re-renders
+- Limitar Context API a temas específicos (no para estados que cambian frecuentemente)
+- Implementar React Query para todos los fetch de datos complejos
+- Usar SWR para datos simples con pocas dependencias
+- Aplicar Server Actions para mutaciones críticas que requieren validación en servidor
+- Sincronizar siempre filtros/ordenamiento con la URL
+- Garantizar que todos los stores tienen su respectivo devtools configurado (solo en desarrollo)
+- Mantener tiempos de caché (staleTime, gcTime) uniformes en toda la aplicación
+- Separar las llamadas a API en cliente dedicado para facilitar testing/mocking 

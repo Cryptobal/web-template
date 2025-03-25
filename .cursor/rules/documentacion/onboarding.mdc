@@ -1,0 +1,153 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: onboarding.mdc
+
+## 🎯 Propósito
+Proporcionar un proceso de onboarding estructurado para nuevos desarrolladores que se unan al proyecto, asegurando una comprensión rápida del sistema de reglas, arquitectura, y flujos de trabajo, con el objetivo de acelerar su productividad y mantener la coherencia del código.
+
+---
+
+## 🚀 Proceso de onboarding
+
+### 1. Configuración inicial (Día 1)
+
+#### Requisitos previos
+- Node.js v18+
+- Git
+- IDE recomendado: VS Code con extensión Cursor
+- Cuenta en Vercel
+- Acceso al repositorio Git
+- Acceso a Cloudflare (si aplica)
+
+#### Pasos de instalación
+1. Clonar el repositorio
+   ```bash
+   git clone https://github.com/organización/proyecto.git
+   cd proyecto
+   ```
+
+2. Instalar dependencias
+   ```bash
+   npm install
+   ```
+
+3. Copiar variables de entorno
+   ```bash
+   cp .env.example .env.local
+   ```
+
+4. Ejecutar entorno de desarrollo
+   ```bash
+   npm run dev
+   ```
+
+### 2. Estructura del proyecto (Día 1-2)
+
+Familiarizarse con la estructura del proyecto siguiendo estas reglas:
+- `base/estructura-carpetas.mdc`: Estructura general
+- `frontend/front-end.mdc`: Organización del frontend
+- `base/next-config.mdc`: Configuración de Next.js
+
+#### Revisión guiada de estructura
+/app # Rutas y páginas (App Router)
+/components # Componentes reutilizables
+/lib # Funciones utilitarias y lógica de negocio
+/public # Archivos estáticos
+/styles # Estilos globales
+
+
+### 3. Sistema de diseño y componentes (Día 2-3)
+
+Revisar el sistema de diseño y componentes disponibles:
+- `frontend/design-system.mdc`: Sistema de diseño global
+- `frontend/componentes-ux.mdc`: Componentes UI/UX disponibles
+
+#### Componentes principales a conocer
+- Layout base (Header, Footer)
+- Componentes UI (Button, Card, Input, etc.)
+- Formularios y validación
+- Gestión de estado
+
+### 4. Flujo de trabajo de desarrollo (Día 3-4)
+
+Comprender el flujo de trabajo y herramientas de desarrollo:
+- `devops/ci-cd.mdc`: Pipeline de CI/CD
+- `base/typescript.mdc`: Configuración y uso de TypeScript
+- `devops/testing.mdc`: Estrategias de testing
+
+#### Proceso de git
+1. Crear una rama desde `develop` para cada tarea
+   ```bash
+   git checkout develop
+   git pull
+   git checkout -b feature/nombre-de-característica
+   ```
+
+2. Comprobar que cumple con estándares
+   ```bash
+   npm run lint
+   npm run type-check
+   npm run test
+   ```
+
+3. Enviar PR a `develop`
+
+### 5. Despliegue y entornos (Día 4-5)
+
+Conocer los entornos y procesos de despliegue:
+- `devops/deploy.mdc`: Proceso de despliegue
+- `devops/cloudflare-vercel/integracion.mdc`: Integración Cloudflare/Vercel
+
+#### Entornos disponibles
+- Desarrollo: PR Previews en Vercel
+- Staging: `develop` branch -> staging.tusitio.com
+- Producción: `main` branch -> tusitio.com
+
+---
+
+## 📚 Documentación y recursos
+
+### 1. Sistema de reglas Cursor
+Comenzar revisando el índice maestro en `.cursor/rules/00-index.mdc` para tener una visión general del sistema de reglas.
+
+### 2. Recursos complementarios
+- Repositorio de componentes (Storybook): https://storybook.tusitio.com
+- Wiki interna: https://tusitio.atlassian.net/wiki
+- Canal de Slack: #proyecto-tusitio
+
+### 3. Sesiones de mentoring
+- Sesión 1 (Día 1): Estructura y sistema de diseño
+- Sesión 2 (Día 3): Flujo de trabajo y mejores prácticas
+- Sesión 3 (Día 5): Q&A y revisión
+
+---
+
+## 🧪 Primer proyecto de práctica
+
+Para consolidar el conocimiento, se recomienda completar este proyecto de práctica:
+
+1. Crear un nuevo componente siguiendo el sistema de diseño
+2. Implementar una nueva página con ruta dinámica
+3. Añadir tests unitarios para el componente
+4. Desplegar a entorno de desarrollo
+
+### Criterios de evaluación
+- Uso correcto de TypeScript
+- Cumplimiento de estándares de accesibilidad
+- Tests adecuados
+- Rendimiento optimizado
+
+---
+
+## 🛠️ Reglas para Cursor (Onboarding)
+
+- Todo nuevo desarrollador debe seguir este proceso de onboarding
+- Asignar un mentor para guiar durante la primera semana
+- Revisar primero el índice maestro de reglas para tener una visión general
+- Completar el proyecto de práctica antes de trabajar en tickets reales
+- Programar una sesión de feedback al finalizar la primera semana
+- Compartir dudas y preguntas en el canal de Slack designado
+- Actualizar este documento cuando se identifiquen mejoras al proceso

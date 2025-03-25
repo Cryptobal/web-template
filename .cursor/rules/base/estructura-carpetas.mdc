@@ -1,0 +1,392 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: estructura-carpetas.mdc
+
+## 🎯 Propósito
+Establecer una estructura de carpetas clara, escalable y optimizada para maximizar la eficiencia del desarrollo, mejorar la rendimiento, facilitar la mantenibilidad del código y permitir el crecimiento del proyecto sin necesidad de refactorizaciones significativas. Esta estructura está diseñada para promover prácticas de desarrollo bien organizadas en proyectos Next.js con integración de Cloudflare.
+
+---
+
+## 📁 Estructura raíz
+
+```
+/
+├── app/                  # Directorio principal Next.js App Router
+├── components/           # Componentes React reutilizables
+├── lib/                  # Funciones de utilidad y lógica compartida
+├── styles/               # Estilos globales y configuración de Tailwind
+├── public/               # Archivos estáticos públicos
+├── content/              # Contenido estructurado (MDX, imágenes, etc.)
+├── types/                # Definiciones de TypeScript
+├── hooks/                # Hooks personalizados de React
+├── middleware.ts         # Middleware global de Next.js
+├── .env.local            # Variables de entorno locales (gitignore)
+├── .env.example          # Ejemplo de variables de entorno
+├── next.config.js        # Configuración de Next.js
+├── postcss.config.js     # Configuración de PostCSS
+├── tailwind.config.js    # Configuración de Tailwind CSS
+├── tsconfig.json         # Configuración de TypeScript
+└── package.json          # Dependencias y scripts
+```
+
+---
+
+## 📂 Directorio `app/`
+
+### Estructura de enrutamiento limpia
+
+```
+app/
+├── layout.tsx            # Layout principal (RootLayout)
+├── page.tsx              # Página de inicio
+├── favicon.ico           # Favicon
+├── globals.css           # Estilos globales importados en layout
+├── [lang]/               # Soporte para internacionalización
+│   ├── layout.tsx        # Layout específico por idioma
+│   └── [...]*            # Estructura anidada con directorios de idioma
+├── (marketing)/          # Grupo de rutas de marketing (no afecta la URL)
+│   ├── about/            # Página Acerca de
+│   ├── contact/          # Página Contacto
+│   └── services/         # Servicios ofrecidos
+├── (content)/            # Contenido editorial/blog
+│   ├── blog/             # Listado de blog
+│   │   └── [slug]/       # Página individual de blog
+│   └── resources/        # Recursos descargables, guías, etc.
+├── (auth)/               # Autenticación y cuenta de usuario
+│   ├── login/            # Inicio de sesión
+│   ├── register/         # Registro
+│   └── reset-password/   # Restablecimiento de contraseña
+├── (dashboard)/          # Área privada/Dashboard
+│   ├── layout.tsx        # Layout para dashboard (protegido)
+│   └── [...]*            # Secciones del dashboard
+├── api/                  # API Routes
+│   ├── webhooks/         # Webhooks (Cloudflare, CMS, etc.)
+│   ├── revalidate/       # Endpoints de revalidación
+│   ├── search/           # API de búsqueda
+│   └── [...]*            # Otros endpoints
+└── sitemap.xml/          # Generación dinámica de sitemap
+    └── route.ts
+```
+
+### Organización de páginas con grupos de rutas
+
+Los grupos de rutas `()` permiten organizar archivos sin afectar la estructura de URL, facilitando la separación por secciones o propósitos.
+
+```tsx
+// app/(marketing)/about/page.tsx
+// URL: /about
+export default function AboutPage() {
+  return <div>Acerca de nosotros</div>;
+}
+
+// app/(dashboard)/settings/page.tsx
+// URL: /settings
+export default function SettingsPage() {
+  return <div>Configuración de cuenta</div>;
+}
+```
+
+---
+
+## 🧩 Directorio `components/`
+
+### Estructura de componentes por dominio
+
+```
+components/
+├── ui/                   # Componentes básicos de UI (Button, Card, etc.)
+│   ├── Button.tsx
+│   ├── Card.tsx
+│   ├── Input.tsx
+│   └── [...]*
+├── layout/               # Componentes de estructura/layout
+│   ├── Header.tsx
+│   ├── Footer.tsx
+│   ├── Sidebar.tsx
+│   └── [...]*
+├── forms/                # Componentes relacionados con formularios
+│   ├── ContactForm.tsx
+│   ├── NewsletterForm.tsx
+│   └── [...]*
+├── analytics/            # Componentes para analytics/tracking
+│   ├── GoogleAnalytics.tsx
+│   ├── FacebookPixel.tsx
+│   └── [...]*
+├── consent/              # Gestión de consentimiento de cookies
+│   ├── ConsentBanner.tsx
+│   ├── ConsentManager.tsx
+│   └── [...]*
+├── blog/                 # Componentes específicos para blog
+│   ├── PostCard.tsx
+│   ├── TableOfContents.tsx
+│   └── [...]*
+├── marketing/            # Componentes de marketing y promoción
+│   ├── CTASection.tsx
+│   ├── Testimonial.tsx
+│   └── [...]*
+├── providers/            # Providers de Context y otros wrappers
+│   ├── ThemeProvider.tsx
+│   ├── AnalyticsProvider.tsx
+│   └── [...]*
+├── skeletons/            # Componentes de carga (loading states)
+│   ├── CardSkeleton.tsx
+│   ├── PostSkeleton.tsx
+│   └── [...]*
+└── schema/               # Componentes para Schema.org/SEO
+    ├── BreadcrumbSchema.tsx
+    ├── ProductSchema.tsx
+    └── [...]*
+```
+
+### Estructura de componentes compuestos
+
+Cada componente principal debe seguir un patrón similar:
+
+```
+ui/Button/
+├── index.ts              # Re-exporta todo - facilita imports
+├── Button.tsx            # Componente principal
+├── ButtonGroup.tsx       # Variante o componente relacionado
+└── button-utils.ts       # Utilidades específicas para este componente
+```
+
+---
+
+## 📚 Directorio `lib/`
+
+### Organización de funciones utilitarias
+
+```
+lib/
+├── api/                  # Funciones para llamadas API
+│   ├── client.ts         # Cliente API base
+│   ├── endpoints.ts      # Definición de endpoints
+│   └── [...]*            # Funciones específicas por API
+├── cms/                  # Integración con CMS headless
+│   ├── contentful.ts     # Cliente para Contentful
+│   ├── queries.ts        # Queries GraphQL/GROQ
+│   └── [...]*
+├── analytics/            # Configuración y utilidades de analytics
+│   ├── gtm.ts            # Configuración Google Tag Manager
+│   ├── events.ts         # Definición de eventos
+│   └── [...]*
+├── auth/                 # Autenticación y autorización
+│   ├── session.ts
+│   ├── permissions.ts
+│   └── [...]*
+├── cloudflare/           # Funciones para Cloudflare
+│   ├── images.ts         # Utilidades para Cloudflare Images
+│   ├── workers.ts        # Helpers para Workers
+│   └── [...]*
+├── utils/                # Utilidades generales
+│   ├── date.ts           # Formato y manipulación de fechas
+│   ├── string.ts         # Manipulación de textos
+│   ├── validation.ts     # Funciones de validación
+│   └── [...]*
+├── seo/                  # Utilidades SEO
+│   ├── metadata.ts       # Helpers para metadatos
+│   ├── schema.ts         # Generadores de Schema.org
+│   └── [...]*
+└── constants.ts          # Constantes globales de la aplicación
+```
+
+---
+
+## 🎨 Directorio `styles/`
+
+### Organización eficiente de estilos
+
+```
+styles/
+├── globals.css           # Estilos globales y directivas Tailwind
+├── animations.css        # Animaciones reutilizables
+├── fonts.css             # Definición y carga de fuentes
+├── themes/               # Temas personalizables
+│   ├── light.css
+│   ├── dark.css
+│   └── [...]*
+└── utils/                # Utilidades CSS específicas
+    ├── grid.css
+    ├── typography.css
+    └── [...]*
+```
+
+---
+
+## 📝 Directorio `content/`
+
+### Organización de contenido estático y dinámico
+
+```
+content/
+├── blog/                 # Artículos de blog (MDX o JSON)
+│   ├── first-post.mdx
+│   ├── second-post.mdx
+│   └── [...]*
+├── pages/                # Contenido de páginas estáticas
+│   ├── about.mdx
+│   ├── terms.mdx
+│   └── [...]*
+├── testimonials/         # Testimonios de clientes
+│   ├── testimonial-1.json
+│   └── [...]*
+├── images/               # Imágenes para contenido
+│   ├── blog/
+│   ├── team/
+│   └── [...]*
+└── data/                 # Datos estructurados para la aplicación
+    ├── navigation.json   # Estructura de navegación
+    ├── features.json     # Características/servicios
+    └── [...]*
+```
+
+---
+
+## 📏 Directorio `types/`
+
+### Organización de tipos TypeScript
+
+```
+types/
+├── index.ts              # Exporta todos los tipos comunes
+├── api.ts                # Tipos para respuestas de API
+├── cms.ts                # Tipos para contenido del CMS
+├── auth.ts               # Tipos para autenticación
+├── contentful.ts         # Tipos para Contentful
+├── blog.ts               # Tipos para blog
+└── [...]*                # Otros tipos específicos
+```
+
+---
+
+## 🪝 Directorio `hooks/`
+
+### Organización de hooks personalizados
+
+```
+hooks/
+├── useApi.ts             # Hook para llamadas API
+├── useAuth.ts            # Hook para autenticación
+├── useLocalStorage.ts    # Hook para localStorage
+├── useDarkMode.ts        # Hook para modo oscuro
+├── useMediaQuery.ts      # Hook para responsive design
+├── useOnScreen.ts        # Hook para detectar elementos en viewport
+└── [...]*                # Otros hooks específicos
+```
+
+---
+
+## 🚀 Optimizaciones estructurales para rendimiento
+
+### 1. Estructura para Code Splitting eficiente
+
+```tsx
+// Importación dinámica de componentes pesados
+import dynamic from 'next/dynamic';
+
+// Cargar solo cuando sea necesario
+const VideoPlayer = dynamic(() => import('@/components/media/VideoPlayer'), {
+  loading: () => <div className="w-full aspect-video bg-neutral-100 animate-pulse" />,
+  ssr: false, // No renderizar en servidor si no es necesario
+});
+
+// Componente de mapa pesado
+const Map = dynamic(() => import('@/components/Map'), {
+  loading: () => <div className="h-[400px] bg-neutral-100 animate-pulse" />,
+  ssr: false,
+});
+```
+
+### 2. Estructura para Route Handlers optimizados
+
+```typescript
+// app/api/products/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getProducts } from '@/lib/cms/products';
+
+export async function GET(request: NextRequest) {
+  // Caché para rutas API - optimiza rendimiento
+  const response = NextResponse.json(await getProducts());
+  
+  // Cache por 10 minutos, stale-while-revalidate por 1 día
+  response.headers.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=86400');
+  
+  return response;
+}
+```
+
+### 3. Estructura para generación estática incremental (ISR)
+
+```typescript
+// app/(content)/blog/[slug]/page.tsx
+import { getAllSlugs, getPostBySlug } from '@/lib/cms/blog';
+
+// Revalidar contenido cada hora
+export const revalidate = 3600;
+
+export async function generateStaticParams() {
+  const slugs = await getAllSlugs();
+  
+  return slugs.map(slug => ({
+    slug,
+  }));
+}
+
+export default async function BlogPost({ params }: { params: { slug: string } }) {
+  const post = await getPostBySlug(params.slug);
+  
+  // Renderizar el post
+}
+```
+
+---
+
+## 📏 Convenciones de nomenclatura
+
+### 1. Archivos y carpetas
+
+- **Componentes**: PascalCase (`Button.tsx`, `ProductCard.tsx`)
+- **Hooks**: camelCase con prefijo `use` (`useAuth.ts`, `useLocalStorage.ts`)
+- **Utilidades/Helpers**: camelCase (`string-utils.ts`, `date-formatter.ts`)
+- **Tipos**: PascalCase (`User.ts`, `ApiResponse.ts`)
+- **Constantes**: UPPER_SNAKE_CASE para valores fijos, PascalCase para enums
+
+### 2. Estructura de imports ordenada
+
+```typescript
+// 1. Imports externos/de biblioteca
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import clsx from 'clsx';
+
+// 2. Imports de tipos o interfaces (separados)
+import type { User, AuthResponse } from '@/types';
+
+// 3. Imports de componentes (orden alfabético)
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+
+// 4. Imports de hooks
+import { useAuth } from '@/hooks/useAuth';
+
+// 5. Imports de utils y otras funciones
+import { formatDate } from '@/lib/utils/date';
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Organización)
+
+- Usar App Router con grupos de rutas para organizar sin afectar URLs
+- Organizar componentes por dominio/propósito, no por tipo de componente
+- Mantener un límite de archivos por carpeta (máximo 10-15) y subdividir si crece más
+- Crear índices para exportar desde carpetas con múltiples componentes
+- Mantener jerarquía de 3 niveles máximo por carpeta para evitar anidamiento excesivo
+- Implementar lazy loading para componentes pesados usando dynamic imports
+- Agrupar componentes relacionados en subcarpetas con un index.ts para re-exportación
+- Mantener rutas API organizadas por dominio y funcionalidad
+- Usar convenciones de nomenclatura consistentes en todo el proyecto
+- Crear tipos TypeScript separados y reutilizables para todo el sistema

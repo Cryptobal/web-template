@@ -1,0 +1,1356 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: error-monitoring.mdc
+
+## 🎯 Propósito
+Establecer un sistema robusto de monitoreo de errores y excepciones que permita detectar, capturar y analizar problemas en tiempo real, tanto en el cliente como en el servidor, facilitando la identificación, diagnóstico y resolución rápida de errores en producción para mantener la máxima calidad y disponibilidad de la aplicación.
+
+---
+
+## 🚨 Integración con Sentry
+
+### 1. Instalación y configuración básica
+
+```bash
+# Instalar dependencias de Sentry
+npm install @sentry/nextjs
+# O con Yarn
+yarn add @sentry/nextjs
+```
+
+### 2. Configuración inicial
+
+```typescript
+// sentry.client.config.ts
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // Ajustar según entorno para optimizar rendimiento
+  enabled: process.env.NODE_ENV === 'production',
+  
+  // Performance monitoring
+  tracesSampleRate: 0.1, // Muestrear 10% de transacciones
+  
+  // Reglas de muestreo
+  tracesSampler: (samplingContext) => {
+    // Aumentar muestreo para rutas críticas
+    if (
+      samplingContext?.location?.pathname?.includes('/checkout') ||
+      samplingContext?.location?.pathname?.includes('/payment')
+    ) {
+      return 0.5; // 50% para rutas críticas
+    }
+    
+    // Default sample rate
+    return 0.1;
+  },
+  
+  // Configuración de captura de sesión 
+  autoSessionTracking: true,
+  
+  // Configuración de seguridad
+  allowUrls: [/https?:\/\/(www\.)?tusitio\.com/],
+  denyUrls: [/localhost/, /\/__nextjs_original-stack-frame/],
+  
+  // Configuración del entorno
+  environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'development',
+  release: process.env.NEXT_PUBLIC_COMMIT_SHA || 'development',
+  
+  // Breadcrumbs para navegación y Redux (si aplica)
+  integrations: [
+    new Sentry.BrowserTracing({
+      // Configuraciones específicas para el rastreo
+    }),
+  ],
+  
+  // Configuración de captura de errores
+  beforeSend(event, hint) {
+    // No enviar errores en desarrollo
+    if (process.env.NODE_ENV === 'development') {
+      return null;
+    }
+    
+    // Filtrar errores conocidos que no necesitan ser reportados
+    const error = hint?.originalException;
+    const errorMessage = typeof error === 'string' 
+      ? error 
+      : error instanceof Error ? error.message : '';
+    
+    // Evitar errores comunes y falsos positivos
+    if (
+      errorMessage.includes('ResizeObserver loop') ||
+      errorMessage.includes('Network request failed') ||
+      errorMessage.includes('Failed to fetch')
+    ) {
+      return null;
+    }
+    
+    // Limpiar información sensible (PII)
+    if (event.request?.cookies) {
+      event.request.cookies = '[REDACTED]';
+    }
+    
+    // Filtrar datos personales de la URL si existen
+    if (event.request?.url) {
+      try {
+        const url = new URL(event.request.url);
+        
+        // Limpiar parámetros sensibles
+        const sensitiveParams = ['token', 'password', 'email', 'phone'];
+        sensitiveParams.forEach(param => {
+          if (url.searchParams.has(param)) {
+            url.searchParams.set(param, '[REDACTED]');
+          }
+        });
+        
+        event.request.url = url.toString();
+      } catch {
+        // Si la URL no es válida, mantenerla como está
+      }
+    }
+    
+    return event;
+  },
+});
+```
+
+### 3. Configuración del servidor
+
+```typescript
+// sentry.server.config.ts
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // Ajustar según entorno para optimizar rendimiento
+  enabled: process.env.NODE_ENV === 'production',
+  
+  // Performance monitoring
+  tracesSampleRate: 0.3, // Mayor tasa de muestreo en servidor para detectar problemas de API/DB
+  
+  // Configuración del entorno
+  environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'development',
+  release: process.env.NEXT_PUBLIC_COMMIT_SHA || 'development',
+  
+  // Integrations server-side
+  integrations: [
+    new Sentry.Integrations.Http({ tracing: true }),
+    // Si se usa Prisma o Mongoose, añadir integración específica
+  ],
+  
+  // Configuración de captura de errores
+  beforeSend(event, hint) {
+    // Filtrar errores conocidos que no necesitan ser reportados
+    const error = hint?.originalException;
+    const errorMessage = typeof error === 'string' 
+      ? error 
+      : error instanceof Error ? error.message : '';
+    
+    // Evitar errores comunes y falsos positivos
+    if (
+      errorMessage.includes('ECONNRESET') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('Rate limit exceeded')
+    ) {
+      return null;
+    }
+    
+    // Scrubbing de información sensible (PII) en server
+    // Limpiar tokens y datos sensibles
+    if (event.request?.headers) {
+      const sensitiveHeaders = ['authorization', 'cookie', 'set-cookie'];
+      sensitiveHeaders.forEach(header => {
+        if (event.request.headers[header]) {
+          event.request.headers[header] = '[REDACTED]';
+        }
+      });
+    }
+    
+    return event;
+  },
+});
+```
+
+### 4. Edge Runtime configuration
+
+```typescript
+// sentry.edge.config.ts
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // Edge tiene configuraciones específicas
+  enabled: process.env.NODE_ENV === 'production',
+  tracesSampleRate: 0.1,
+  
+  // Configuración del entorno
+  environment: process.env.NEXT_PUBLIC_ENVIRONMENT || 'development',
+  release: process.env.NEXT_PUBLIC_COMMIT_SHA || 'development',
+});
+```
+
+### 5. Configuración de Next.js
+
+```typescript
+// next.config.js
+const { withSentryConfig } = require('@sentry/nextjs');
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Configuración estándar de Next.js
+};
+
+// Configuración Sentry
+const sentryWebpackPluginOptions = {
+  // Configuración adicional para el plugin de Webpack
+  silent: true, // Reduce ruido en la consola al construir
+  
+  // Configuración para upload de source maps
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  
+  // Configuración de webpack
+  widenClientFileUpload: true,
+  transpileClientSDK: true,
+  tunnelRoute: '/monitoring-tunnel',
+  hideSourceMaps: true,
+  disableLogger: true,
+};
+
+// Export configurado con Sentry
+module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions);
+```
+
+---
+
+## 🌐 Error Boundary Global
+
+### 1. Componente de Error Boundary
+
+```tsx
+// components/monitoring/ErrorBoundary.tsx
+'use client';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from '@sentry/nextjs';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode | ((error: Error, reset: () => void) => ReactNode);
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { 
+      hasError: false,
+      error: null
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    // Actualizar estado para mostrar fallback UI
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Capturar error en Sentry
+    Sentry.captureException(error, {
+      contexts: {
+        react: {
+          componentStack: errorInfo.componentStack,
+        },
+      },
+    });
+    
+    // Callback opcional para el consumidor
+    this.props.onError?.(error, errorInfo);
+    
+    // Log para desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('Error capturado por ErrorBoundary:', error, errorInfo);
+    }
+  }
+  
+  // Método para reintentar renderizado
+  resetErrorBoundary = (): void => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      // Renderizar fallback UI
+      if (typeof this.props.fallback === 'function') {
+        return this.props.fallback(this.state.error!, this.resetErrorBoundary);
+      }
+      
+      return this.props.fallback || (
+        <div className="p-6 max-w-md mx-auto bg-white dark:bg-neutral-800 rounded-xl shadow-md my-8">
+          <div className="text-red-500 text-2xl mb-4">Algo salió mal</div>
+          <p className="text-neutral-600 dark:text-neutral-300 mb-4">
+            Ha ocurrido un error al renderizar esta página.
+          </p>
+          <button
+            onClick={this.resetErrorBoundary}
+            className="px-4 py-2 bg-primary text-white rounded-md"
+          >
+            Intentar nuevamente
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+### 2. Uso de Error Boundary en App Router
+
+```tsx
+// app/layout.tsx
+import { ErrorBoundary } from '@/components/monitoring/ErrorBoundary';
+import { ErrorFallback } from '@/components/monitoring/ErrorFallback';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <body>
+        <ErrorBoundary fallback={<ErrorFallback />}>
+          {children}
+        </ErrorBoundary>
+      </body>
+    </html>
+  );
+}
+
+// components/monitoring/ErrorFallback.tsx
+'use client';
+
+import Link from 'next/link';
+import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
+
+interface ErrorFallbackProps {
+  error?: Error;
+  reset?: () => void;
+}
+
+export function ErrorFallback({ error, reset }: ErrorFallbackProps) {
+  // Reportar a analytics
+  useEffect(() => {
+    if (error) {
+      // Enviar evento a GA/Vercel Analytics
+      if (window.gtag) {
+        window.gtag('event', 'exception', {
+          description: error.message,
+          fatal: true,
+        });
+      }
+    }
+  }, [error]);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] p-4">
+      <div className="bg-white dark:bg-neutral-800 shadow-xl rounded-lg p-8 max-w-md w-full">
+        <h2 className="text-2xl font-bold text-red-600 mb-4">
+          Algo salió mal
+        </h2>
+        
+        <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+          Hubo un error inesperado. Nuestro equipo ha sido notificado y estamos trabajando para resolverlo.
+        </p>
+        
+        {process.env.NODE_ENV !== 'production' && error && (
+          <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-md mb-6 overflow-auto">
+            <p className="font-mono text-sm text-red-800 dark:text-red-300 whitespace-pre-wrap">
+              {error.message}
+              {error.stack && (
+                <>
+                  <br />
+                  <br />
+                  {error.stack}
+                </>
+              )}
+            </p>
+          </div>
+        )}
+        
+        <div className="flex flex-col sm:flex-row gap-3">
+          {reset && (
+            <button
+              onClick={reset}
+              className="px-4 py-2 bg-primary text-white rounded-md font-medium"
+            >
+              Intentar de nuevo
+            </button>
+          )}
+          
+          <Link
+            href="/"
+            className="px-4 py-2 bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-white rounded-md font-medium text-center"
+          >
+            Volver al inicio
+          </Link>
+          
+          <button
+            onClick={() => Sentry.showReportDialog()}
+            className="px-4 py-2 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 rounded-md font-medium"
+          >
+            Reportar problema
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### 3. Manejo de errores en rutas de App Router
+
+```tsx
+// app/error.tsx
+'use client';
+
+import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
+import { ErrorFallback } from '@/components/monitoring/ErrorFallback';
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    // Capturar error en Sentry
+    Sentry.captureException(error, {
+      tags: {
+        component: 'GlobalError',
+      },
+    });
+  }, [error]);
+
+  return (
+    <html>
+      <body>
+        <ErrorFallback error={error} reset={reset} />
+      </body>
+    </html>
+  );
+}
+
+// app/[lang]/route-with-custom-error/error.tsx
+'use client';
+
+import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
+
+export default function RouteError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    // Capturar error en Sentry
+    Sentry.captureException(error, {
+      tags: {
+        component: 'CustomRouteError',
+        route: '/route-with-custom-error',
+      },
+    });
+  }, [error]);
+
+  return (
+    <div className="p-8">
+      <h2 className="text-2xl font-bold mb-4">Error en esta sección</h2>
+      <p className="mb-4">
+        Ha ocurrido un problema específico en esta parte de la aplicación.
+      </p>
+      <button
+        onClick={reset}
+        className="px-4 py-2 bg-primary text-white rounded-md"
+      >
+        Reintentar
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+## 📝 Logging Centralizado
+
+### 1. Servicio de logger
+
+```typescript
+// lib/monitoring/logger.ts
+import * as Sentry from '@sentry/nextjs';
+
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+interface LogPayload {
+  message: string;
+  [key: string]: any;
+}
+
+interface LogOptions {
+  tags?: Record<string, string>;
+  user?: {
+    id?: string;
+    email?: string;
+    [key: string]: any;
+  };
+  level?: LogLevel;
+  context?: Record<string, any>;
+}
+
+class Logger {
+  private static instance: Logger;
+  
+  private constructor() {
+    // Singleton
+  }
+  
+  static getInstance(): Logger {
+    if (!Logger.instance) {
+      Logger.instance = new Logger();
+    }
+    return Logger.instance;
+  }
+  
+  /**
+   * Log un mensaje en la consola y en Sentry si es necesario
+   */
+  log(
+    payload: LogPayload,
+    options: LogOptions = {}
+  ): void {
+    const { message, ...data } = payload;
+    const { level = 'info', tags = {}, user, context = {} } = options;
+    
+    // Metadatos comunes
+    const timestamp = new Date().toISOString();
+    const environment = process.env.NEXT_PUBLIC_ENVIRONMENT || 'development';
+    
+    // Construir contexto completo
+    const fullContext = {
+      ...context,
+      data,
+      timestamp,
+      environment,
+    };
+    
+    // Log a consola en desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      const logFunctions = {
+        debug: console.debug,
+        info: console.info,
+        warn: console.warn,
+        error: console.error,
+      };
+      
+      logFunctions[level](
+        `[${timestamp}] [${level.toUpperCase()}] ${message}`,
+        fullContext
+      );
+    }
+    
+    // Si está en producción y nivel es suficientemente alto, log a Sentry
+    if (process.env.NODE_ENV === 'production') {
+      if (level === 'error') {
+        // Capturar como error en Sentry
+        Sentry.captureException(new Error(message), {
+          extra: fullContext,
+          tags,
+          user,
+        });
+      } else if (level === 'warn') {
+        // Capturar como mensaje de advertencia
+        Sentry.captureMessage(message, {
+          level: Sentry.Severity.Warning,
+          extra: fullContext,
+          tags,
+          user,
+        });
+      } else if (environment !== 'production' || Math.random() < 0.05) {
+        // En entornos que no son de producción, o sampling al 5% en producción
+        Sentry.addBreadcrumb({
+          category: 'log',
+          message,
+          level: level as Sentry.Severity,
+          data: fullContext,
+        });
+      }
+      
+      // Aquí se pueden añadir integraciones con otros servicios de logging como DataDog, LogRocket, etc.
+    }
+  }
+  
+  debug(message: string, data?: Record<string, any>, options?: Omit<LogOptions, 'level'>): void {
+    this.log({ message, ...data }, { ...options, level: 'debug' });
+  }
+  
+  info(message: string, data?: Record<string, any>, options?: Omit<LogOptions, 'level'>): void {
+    this.log({ message, ...data }, { ...options, level: 'info' });
+  }
+  
+  warn(message: string, data?: Record<string, any>, options?: Omit<LogOptions, 'level'>): void {
+    this.log({ message, ...data }, { ...options, level: 'warn' });
+  }
+  
+  error(message: string, error?: Error, data?: Record<string, any>, options?: Omit<LogOptions, 'level'>): void {
+    // Si hay un error, enriquecemos los datos con información del error
+    const errorData = error ? {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...data,
+    } : data;
+    
+    this.log({ message, ...errorData }, { ...options, level: 'error' });
+  }
+  
+  /**
+   * Captura tiempo de operaciones para performance monitoring
+   */
+  async time<T>(
+    name: string,
+    fn: () => Promise<T>,
+    tags: Record<string, string> = {}
+  ): Promise<T> {
+    const start = performance.now();
+    try {
+      return await fn();
+    } catch (error) {
+      this.error(`Error durante operación: ${name}`, error as Error, { duration: performance.now() - start }, { tags });
+      throw error;
+    } finally {
+      const duration = performance.now() - start;
+      this.info(`Operación completada: ${name}`, { duration }, { tags });
+      
+      // Enviar métrica de performance a Sentry
+      Sentry.metrics.distribution('operation.duration', duration, {
+        unit: 'millisecond',
+        tags: {
+          operation: name,
+          ...tags,
+        },
+      });
+    }
+  }
+}
+
+// Exportar instancia singleton
+export const logger = Logger.getInstance();
+```
+
+### 2. Hook para logging de errores de API
+
+```typescript
+// hooks/useApiWithErrorLogging.ts
+import { useState } from 'react';
+import { logger } from '@/lib/monitoring/logger';
+
+interface UseApiOptions {
+  errorMessage?: string;
+  tags?: Record<string, string>;
+  suppressToast?: boolean;
+  onSuccess?: (data: any) => void;
+  onError?: (error: Error) => void;
+}
+
+export function useApiWithErrorLogging() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const executeApi = async <T>(
+    apiCall: () => Promise<T>,
+    options: UseApiOptions = {}
+  ): Promise<T | null> => {
+    const {
+      errorMessage = 'Error en la solicitud a la API',
+      tags = {},
+      suppressToast = false,
+      onSuccess,
+      onError,
+    } = options;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await apiCall();
+      
+      // Operación exitosa
+      setIsLoading(false);
+      onSuccess?.(result);
+      return result;
+    } catch (err) {
+      // Manejar error
+      const error = err instanceof Error ? err : new Error(String(err));
+      
+      // Loguear error
+      logger.error(errorMessage, error, { request: getRequestInfo() }, { tags });
+      
+      // Actualizar estado
+      setIsLoading(false);
+      setError(error);
+      
+      // Mostrar error en toast si es necesario
+      if (!suppressToast) {
+        if (typeof window !== 'undefined' && window.showToast) {
+          window.showToast('error', 'Error', errorMessage);
+        }
+      }
+      
+      // Callback de error
+      onError?.(error);
+      
+      return null;
+    }
+  };
+  
+  return { executeApi, isLoading, error };
+}
+
+// Función para obtener información de la petición
+function getRequestInfo() {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  
+  return {
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    // No incluir información sensible
+  };
+}
+```
+
+---
+
+## 🔄 Monitoreo de Performance y User Experience
+
+### 1. Servicio de User Vitals
+
+```typescript
+// lib/monitoring/vitals.ts
+import * as Sentry from '@sentry/nextjs';
+import { logger } from './logger';
+
+type MetricName = 'CLS' | 'FCP' | 'FID' | 'INP' | 'LCP' | 'TTFB';
+
+interface VitalMetric {
+  name: MetricName;
+  value: number;
+  rating: 'good' | 'needs-improvement' | 'poor';
+  delta: number;
+  id: string;
+}
+
+// Umbrales para métricas (según web.dev)
+const thresholds = {
+  CLS: { good: 0.1, poor: 0.25 },   // Cumulative Layout Shift
+  FCP: { good: 1800, poor: 3000 },  // First Contentful Paint (ms)
+  FID: { good: 100, poor: 300 },    // First Input Delay (ms)
+  INP: { good: 200, poor: 500 },    // Interaction to Next Paint (ms)
+  LCP: { good: 2500, poor: 4000 },  // Largest Contentful Paint (ms)
+  TTFB: { good: 800, poor: 1800 },  // Time to First Byte (ms)
+};
+
+// Calcular rating basado en umbrales
+function getRating(name: MetricName, value: number): 'good' | 'needs-improvement' | 'poor' {
+  const threshold = thresholds[name];
+  if (value <= threshold.good) return 'good';
+  if (value <= threshold.poor) return 'needs-improvement';
+  return 'poor';
+}
+
+// Exportar función para capturar métricas web vitals
+export function captureWebVitals(metric: VitalMetric): void {
+  // Añadir rating si no está presente
+  const metricWithRating = {
+    ...metric,
+    rating: metric.rating || getRating(metric.name, metric.value),
+  };
+  
+  // Loggear métricas
+  logger.info(`Web Vital: ${metric.name}`, {
+    ...metricWithRating,
+    page: window.location.pathname,
+  });
+  
+  // Enviar a Sentry como métrica
+  Sentry.metrics.distribution(`web_vitals.${metric.name.toLowerCase()}`, metric.value, {
+    unit: metric.name === 'CLS' ? 'none' : 'millisecond',
+    tags: {
+      page: window.location.pathname,
+      rating: metricWithRating.rating,
+    },
+  });
+  
+  // Si la métrica es pobre, enviar un evento para análisis
+  if (metricWithRating.rating === 'poor') {
+    Sentry.captureMessage(`Poor Web Vital: ${metric.name}`, {
+      level: Sentry.Severity.Warning,
+      tags: {
+        metric: metric.name,
+        page: window.location.pathname,
+      },
+      extra: metricWithRating,
+    });
+  }
+  
+  // También se puede enviar a Google Analytics, Vercel Analytics, etc.
+  if (window.gtag) {
+    window.gtag('event', 'web_vitals', {
+      event_category: 'Web Vitals',
+      event_label: window.location.pathname,
+      value: Math.round(metric.value),
+      metric_name: metric.name,
+      metric_rating: metricWithRating.rating,
+      non_interaction: true,
+    });
+  }
+}
+
+// Exportar función para NextJS reportWebVitals
+export function reportWebVitals(metric: any): void {
+  captureWebVitals(metric);
+}
+```
+
+### 2. Integración en Next.js
+
+```typescript
+// app/layout.tsx o _app.tsx
+import { reportWebVitals } from '@/lib/monitoring/vitals';
+
+// En el componente
+export function reportWebVitals(metric) {
+  // Forward a nuestro handler
+  reportWebVitals(metric);
+}
+```
+
+### 3. Hook para tracking de errores de usuario
+
+```typescript
+// hooks/useErrorTracking.ts
+'use client';
+
+import { useState, useCallback } from 'react';
+import * as Sentry from '@sentry/nextjs';
+import { logger } from '@/lib/monitoring/logger';
+
+interface ErrorTrackingOptions {
+  tags?: Record<string, string>;
+  user?: {
+    id?: string;
+    email?: string;
+    [key: string]: any;
+  };
+  data?: Record<string, any>;
+}
+
+export function useErrorTracking() {
+  const [lastError, setLastError] = useState<Error | null>(null);
+  
+  // Función para capturar error con contexto enriquecido
+  const captureError = useCallback((
+    error: Error | string,
+    options: ErrorTrackingOptions = {}
+  ) => {
+    const errorObj = typeof error === 'string' ? new Error(error) : error;
+    const { tags = {}, user, data = {} } = options;
+    
+    // Guardar último error
+    setLastError(errorObj);
+    
+    // Añadir contexto de UI
+    const uiContext = {
+      url: window.location.href,
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+      userAgent: navigator.userAgent,
+    };
+    
+    // Log a nuestro sistema centralizado
+    logger.error(
+      errorObj.message || 'Error en interfaz de usuario',
+      errorObj,
+      { ...data, uiContext },
+      { tags, user }
+    );
+    
+    // Capturar en Sentry con contexto
+    Sentry.withScope((scope) => {
+      // Añadir etiquetas
+      Object.entries(tags).forEach(([key, value]) => {
+        scope.setTag(key, value);
+      });
+      
+      // Añadir datos extra
+      scope.setExtras({ ...data, uiContext });
+      
+      // Añadir información de usuario si existe
+      if (user) {
+        scope.setUser(user);
+      }
+      
+      // Capturar el error
+      Sentry.captureException(errorObj);
+    });
+    
+    return errorObj;
+  }, []);
+  
+  // Función de limpieza de errores
+  const clearError = useCallback(() => {
+    setLastError(null);
+  }, []);
+  
+  return {
+    lastError,
+    captureError,
+    clearError,
+  };
+}
+```
+
+### 4. Implementación de Error Boundaries específicos para componentes
+
+```tsx
+// components/SafeComponent.tsx
+'use client';
+
+import { ErrorBoundary } from '@/components/monitoring/ErrorBoundary';
+import { useErrorTracking } from '@/hooks/useErrorTracking';
+
+interface SafeComponentProps {
+  name: string;
+  fallback?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+export function SafeComponent({ name, fallback, children }: SafeComponentProps) {
+  const { captureError } = useErrorTracking();
+  
+  const handleError = (error: Error) => {
+    captureError(error, {
+      tags: {
+        component: name,
+      },
+    });
+  };
+  
+  return (
+    <ErrorBoundary onError={handleError} fallback={fallback}>
+      {children}
+    </ErrorBoundary>
+  );
+}
+
+// Uso en componentes con potencial de error
+// components/DynamicDataDisplay.tsx
+export function DynamicDataDisplay({ data }) {
+  return (
+    <SafeComponent name="DynamicDataDisplay">
+      {/* Componente con potencial de errores */}
+      <div>
+        <h3>{data.title}</h3>
+        <p>{data.description}</p>
+        {data.items.map(item => (
+          <div key={item.id}>{item.name}</div>
+        ))}
+      </div>
+    </SafeComponent>
+  );
+}
+```
+
+---
+
+## 🔎 Integración con LogRocket (opcional)
+
+```typescript
+// lib/monitoring/logrocket.ts
+'use client';
+
+import LogRocket from 'logrocket';
+import setupLogRocketReact from 'logrocket-react';
+import * as Sentry from '@sentry/nextjs';
+
+// Inicializar LogRocket
+export function initLogRocket(): void {
+  // Configuración básica
+  LogRocket.init(process.env.NEXT_PUBLIC_LOGROCKET_APP_ID, {
+    release: process.env.NEXT_PUBLIC_COMMIT_SHA,
+    rootHostname: 'tusitio.com',
+    dom: {
+      inputSanitizer: true, // Ofuscar campos de formulario sensibles
+      textSanitizer: true, // Ofuscar texto que parece sensible
+    },
+    network: {
+      requestSanitizer: (request) => {
+        // Sanitizar headers y body de petición
+        const sanitizedHeaders = { ...request.headers };
+        
+        // Redactar headers sensibles
+        if (sanitizedHeaders.Authorization) {
+          sanitizedHeaders.Authorization = '***';
+        }
+        if (sanitizedHeaders.Cookie) {
+          sanitizedHeaders.Cookie = '***';
+        }
+        
+        // Sanitizar body si contiene información sensible
+        let sanitizedBody = request.body;
+        
+        if (typeof sanitizedBody === 'string' && (
+          request.url.includes('/auth') ||
+          request.url.includes('/login') ||
+          request.url.includes('/user')
+        )) {
+          try {
+            const parsedBody = JSON.parse(sanitizedBody);
+            
+            // Redactar campos sensibles
+            if (parsedBody.password) parsedBody.password = '***';
+            if (parsedBody.email) parsedBody.email = '***@***.com';
+            if (parsedBody.token) parsedBody.token = '***';
+            
+            sanitizedBody = JSON.stringify(parsedBody);
+          } catch {
+            // Si no es JSON válido, redactar todo el cuerpo
+            sanitizedBody = '*** REDACTED ***';
+          }
+        }
+        
+        return {
+          ...request,
+          headers: sanitizedHeaders,
+          body: sanitizedBody,
+        };
+      },
+    },
+  });
+  
+  // Integración con React
+  setupLogRocketReact(LogRocket);
+  
+  // Integración con Sentry
+  LogRocket.getSessionURL(sessionURL => {
+    Sentry.configureScope(scope => {
+      scope.setExtra('logRocketSessionURL', sessionURL);
+    });
+  });
+}
+
+// Función para identificar usuarios
+export function identifyUser(user: { id: string; email?: string; name?: string }): void {
+  if (!user || !user.id) return;
+  
+  LogRocket.identify(user.id, {
+    name: user.name,
+    email: user.email,
+    
+    // Añadir propiedades personalizadas
+    subscriptionTier: user.subscriptionTier,
+    role: user.role,
+  });
+  
+  // Actualizar también en Sentry
+  Sentry.setUser({
+    id: user.id,
+    email: user.email,
+    username: user.name,
+  });
+}
+
+// Hook para usar LogRocket en componentes
+export function useLogRocket() {
+  return {
+    identify: identifyUser,
+    captureException: (error: Error, tags?: Record<string, string>) => {
+      LogRocket.captureException(error, {
+        tags,
+      });
+    },
+    captureMessage: (message: string, tags?: Record<string, string>) => {
+      LogRocket.captureMessage(message, {
+        tags,
+      });
+    },
+  };
+}
+```
+
+---
+
+## 🚨 Alertas y Notificaciones
+
+### 1. Configuración en Sentry
+
+```typescript
+// En el dashboard de Sentry configurar:
+
+// 1. Alertas de volumen (Volume Alerts)
+// - Umbral: >5 eventos en 1 hora
+// - Canales: Email, Slack
+
+// 2. Alertas de problemas nuevos (Issue Alerts)
+// - Cuando: Nuevo problema detectado
+// - Canales: Email, Slack
+
+// 3. Alertas de error server (Error Status)
+// - Cuando: error.status = 500
+// - Canales: Slack, PagerDuty
+
+// 4. Alertas de performance (Performance Alerts)
+// - Cuando: p95 > 2000ms en /api/*
+// - Canales: Slack
+```
+
+### 2. Integración de Slack con Webhook
+
+```typescript
+// lib/monitoring/slack-alerts.ts
+interface SlackMessage {
+  severity: 'info' | 'warning' | 'error';
+  title: string;
+  message: string;
+  details?: Record<string, any>;
+  channel?: string;
+}
+
+export async function sendSlackAlert(alert: SlackMessage) {
+  // Solo enviar en producción
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[DEV] Slack alert:', alert);
+    return;
+  }
+  
+  try {
+    // Determinar webhook URL por canal o severidad
+    let webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    
+    if (alert.channel === 'critical' || alert.severity === 'error') {
+      webhookUrl = process.env.SLACK_CRITICAL_WEBHOOK_URL || webhookUrl;
+    }
+    
+    if (!webhookUrl) {
+      console.error('No Slack webhook URL configured');
+      return;
+    }
+    
+    // Generar color según severidad
+    const colors = {
+      info: '#36a64f',
+      warning: '#ffcc00',
+      error: '#ff0000',
+    };
+    
+    // Construir mensaje
+    const slackPayload = {
+      text: `[${alert.severity.toUpperCase()}] ${alert.title}`,
+      blocks: [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: alert.title,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: alert.message,
+          },
+        },
+      ],
+      attachments: [
+        {
+          color: colors[alert.severity],
+          fields: [],
+        },
+      ],
+    };
+    
+    // Añadir detalles si existen
+    if (alert.details) {
+      slackPayload.attachments[0].fields = Object.entries(alert.details).map(([key, value]) => ({
+        title: key,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+        short: true,
+      }));
+    }
+    
+    // Enviar a Slack
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackPayload),
+    });
+  } catch (error) {
+    console.error('Error sending Slack alert:', error);
+  }
+}
+```
+
+### 3. Automatización de alertas de backend
+
+```typescript
+// middleware.ts o cualquier middleware personalizado
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
+import { sendSlackAlert } from '@/lib/monitoring/slack-alerts';
+
+// Contador en memoria para rate limiting
+const apiErrorCounts: Record<string, { count: number; timestamp: number }> = {};
+
+export async function middleware(request: NextRequest) {
+  // Solo interceptar rutas de API
+  if (!request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+  
+  // Clonar la respuesta original para poder leer el body
+  const originalResponse = NextResponse.next();
+  
+  // Esperar a que la respuesta se complete y verificar si es un error
+  try {
+    const response = await originalResponse;
+    
+    // Verificar si es un error 4xx o 5xx
+    if (response.status >= 400) {
+      const endpoint = request.nextUrl.pathname;
+      const method = request.method;
+      
+      // Capturar en Sentry
+      if (response.status >= 500) {
+        Sentry.captureMessage(`API Error: ${method} ${endpoint} - ${response.status}`, {
+          level: Sentry.Severity.Error,
+          tags: {
+            api_endpoint: endpoint,
+            http_method: method,
+            status_code: response.status.toString(),
+          },
+        });
+        
+        // Alertar solo si ocurren múltiples errores (para evitar ruido)
+        const key = `${method}-${endpoint}`;
+        const now = Date.now();
+        
+        // Inicializar o actualizar contador
+        if (!apiErrorCounts[key] || now - apiErrorCounts[key].timestamp > 300000) { // 5 minutos
+          apiErrorCounts[key] = { count: 1, timestamp: now };
+        } else {
+          apiErrorCounts[key].count++;
+          apiErrorCounts[key].timestamp = now;
+        }
+        
+        // Alertar si hay más de 3 errores en 5 minutos
+        if (apiErrorCounts[key].count >= 3) {
+          // Resetear el contador
+          apiErrorCounts[key].count = 0;
+          
+          // Enviar alerta a Slack
+          await sendSlackAlert({
+            severity: 'error',
+            title: `Múltiples errores en API: ${method} ${endpoint}`,
+            message: `Se han detectado ${apiErrorCounts[key].count} errores en los últimos 5 minutos.`,
+            details: {
+              endpoint,
+              method,
+              status: response.status,
+              environment: process.env.NODE_ENV,
+            },
+            channel: 'critical',
+          });
+        }
+      }
+    }
+    
+    return response;
+  } catch (error) {
+    // Capturar error del middleware
+    Sentry.captureException(error, {
+      tags: {
+        component: 'ApiMiddleware',
+      },
+    });
+    
+    return originalResponse;
+  }
+}
+
+export const config = {
+  matcher: ['/api/:path*'],
+};
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Error Monitoring)
+
+- Implementar Sentry para la captura y análisis de errores
+- Añadir Error Boundaries para manejar errores en componentes React
+- Configurar logging centralizado para unificar errores y debugging
+- Implementar reportWebVitals para capturar métricas de performance
+- Añadir filtrado y sanitización de datos sensibles en logs
+- Configurar alertas para errores críticos en producción
+- Utilizar hooks específicos para facilitar la captura de errores en componentes
+- Implementar Rate Limiting para evitar saturación en caso de múltiples errores
+- Añadir integración con Slack u otras herramientas de comunicación
+- Asegurar que todos los errores de API son capturados y analizados
+- Configurar el upload de source maps a Sentry para facilitar debugging
+- Implementar monitoreo de performance con Sentry Performance o herramientas similares
+- Configurar release tracking para identificar en qué versión ocurren los errores
+
+---
+
+## 📋 Checklist de Monitoreo de Errores
+
+- [ ] Sentry implementado y configurado (cliente, servidor, edge)
+- [ ] Error Boundaries globales y por componente
+- [ ] Sistema de logging centralizado
+- [ ] Captura de errores de API y fetch
+- [ ] Sanitización de datos sensibles
+- [ ] Upload de source maps configurado
+- [ ] Alertas en Slack para errores críticos
+- [ ] Monitoreo de Web Vitals
+- [ ] Hooks para error tracking
+- [ ] Middleware para captura de errores de API
+- [ ] Release tracking configurado
+- [ ] Ambiente de desarrollo con información de debugging
+- [ ] Estrategia para rollbacks en caso de errores críticos
+- [ ] Panel de control para monitoreo en tiempo real
+- [ ] Reportes periódicos de errores y performance 

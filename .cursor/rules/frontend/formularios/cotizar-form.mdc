@@ -1,0 +1,102 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: cotizar-form.mdc
+
+## 🎯 Propósito  
+Formularios de cotización reutilizables con validación, integrados al sistema de leads vía Make.com.  
+Permiten capturar datos clave de potenciales clientes desde cualquier landing o página del sitio.
+
+---
+
+## 📁 Ruta esperada del componente  
+`/components/form/CotizarForm.tsx`
+
+---
+
+## 🧩 Campos requeridos
+
+1. **Nombre**
+2. **Apellido**
+3. **Email** (validado)
+4. **Celular** (exactamente 9 dígitos sin +56)
+5. **Empresa**
+6. **Dirección** (autocompletado con Google Maps)
+   - Debe extraer automáticamente:  
+     - Comuna (`administrative_area_level_3`)  
+     - Ciudad (`locality`)
+7. **Industria** (selector)
+8. **Página Web**
+9. **Detalle** (textarea largo)
+
+---
+
+## ✅ Validaciones esperadas
+
+- Todos los campos requeridos
+- Email válido (`email`)
+- Celular con regex: `^\d{9}$`
+- Página web: URL válida
+- Dirección con validación y parsing de Google Maps
+- Industria seleccionada de lista cerrada
+
+---
+
+## 📤 Envío del formulario
+
+- Método: `POST`
+- Endpoint: `/api/contacto`
+- Webhook Make:  
+  `https://hook.us1.make.com/230cn8ic3ifsa2uqqo7p6aiq9mmx341x`
+
+```ts
+// Payload del webhook
+{
+  "nombre": "Carlos",
+  "apellido": "Soto",
+  "email": "carlos@gard.cl",
+  "celular": "987654321",
+  "empresa": "Gard Security",
+  "direccion": "Camino Los Trapenses 2140, Santiago",
+  "comuna": "Lo Barnechea",
+  "ciudad": "Santiago",
+  "pagina_web": "https://gard.cl",
+  "industria": "Retail y Centros Comerciales",
+  "detalle": "Necesitamos guardias para 2 instalaciones."
+}
+
+🧠 Integración con Google Maps
+	•	Utilizar Google Places Autocomplete para el campo dirección
+	•	Extraer city y comuna automáticamente al seleccionar una dirección
+	•	Puede usarse react-places-autocomplete o API directa de Maps
+
+⸻
+
+📐 UI/UX
+	•	Diseño mobile-first
+	•	Sección clara en la landing /cotizar
+	•	Inputs redondeados, campos agrupados visualmente
+	•	Validaciones inline
+	•	Mensaje de éxito: ✅ “Hemos recibido tu solicitud”
+	•	Error de validación: ❌ “Faltan campos obligatorios”
+	•	Incluir CotizarButton opcional como CTA adicional
+
+⸻
+
+🛠️ Reglas Cursor
+	•	El formulario debe estar en /components/form/CotizarForm.tsx
+	•	Usar React Hook Form + Zod para validaciones
+	•	Conectarse a /api/contacto vía fetch o axios
+	•	Enviar datos al webhook de Make automáticamente
+	•	Mostrar feedback visual (loading, éxito, error)
+	•	Sin dependencias innecesarias (ligero y rápido)
+	•	Compatible con seguimiento de conversiones (data-analytics="form-cotizar")
+
+⸻
+
+📈 Relación con otras reglas
+	•	Complementa: lead-capturing-api.mdc
+	•	Depende de: imagenes.mdc para íconos o ilustraciones
+	•	Se usa en: /app/cotizar/page.tsx

@@ -1,0 +1,729 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla: logging-strategy.mdc
+
+## 🎯 Propósito
+Establecer una estrategia robusta y estandarizada de logging para aplicaciones web que facilite el monitoreo, la detección de problemas y el cumplimiento de requisitos de seguridad y auditoría.
+
+---
+
+## 📝 Niveles de Logging
+
+### 1. Implementación de niveles de logging estandarizados
+
+```typescript
+// lib/logger/logger.ts
+import pino from 'pino';
+import { LogLevel } from './types';
+
+// Niveles de log en orden de severidad
+export enum LogLevel {
+  TRACE = 'trace',
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
+  FATAL = 'fatal',
+}
+
+// Configuración base del logger
+const baseLogger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: process.env.NODE_ENV !== 'production',
+      translateTime: 'SYS:yyyy-mm-dd HH:MM:ss',
+      ignore: 'pid,hostname',
+    },
+  },
+  base: {
+    env: process.env.NODE_ENV,
+    version: process.env.APP_VERSION || '1.0.0',
+  },
+});
+
+// Función para crear loggers con contexto
+export function createLogger(context: string) {
+  return baseLogger.child({ context });
+}
+
+// Logger específico para API
+export const apiLogger = createLogger('api');
+
+// Logger para base de datos
+export const dbLogger = createLogger('database');
+
+// Logger para autenticación
+export const authLogger = createLogger('auth');
+
+// Logger para servicios externos
+export const externalServiceLogger = createLogger('external');
+
+// Ejemplo de uso
+// authLogger.info({ userId: '123' }, 'Usuario autenticado correctamente');
+// dbLogger.error({ query, error }, 'Error en consulta a la base de datos');
+```
+
+### 2. Logger personalizado con contexto
+
+```typescript
+// lib/logger/application-logger.ts
+import { createLogger, LogLevel } from './logger';
+
+interface LogContext {
+  requestId?: string;
+  userId?: string;
+  action?: string;
+  [key: string]: any;
+}
+
+export class ApplicationLogger {
+  private logger = createLogger('application');
+  private context: LogContext = {};
+  
+  constructor(initialContext: LogContext = {}) {
+    this.context = initialContext;
+  }
+  
+  // Añadir o actualizar datos de contexto
+  public setContext(newContext: Partial<LogContext>): void {
+    this.context = {
+      ...this.context,
+      ...newContext,
+    };
+  }
+  
+  // Crear una nueva instancia con contexto adicional
+  public child(childContext: Partial<LogContext>): ApplicationLogger {
+    return new ApplicationLogger({
+      ...this.context,
+      ...childContext,
+    });
+  }
+  
+  // Métodos para diferentes niveles de log
+  public trace(message: string, data: object = {}): void {
+    this.log(LogLevel.TRACE, message, data);
+  }
+  
+  public debug(message: string, data: object = {}): void {
+    this.log(LogLevel.DEBUG, message, data);
+  }
+  
+  public info(message: string, data: object = {}): void {
+    this.log(LogLevel.INFO, message, data);
+  }
+  
+  public warn(message: string, data: object = {}): void {
+    this.log(LogLevel.WARN, message, data);
+  }
+  
+  public error(message: string, data: object = {}): void {
+    this.log(LogLevel.ERROR, message, data);
+  }
+  
+  public fatal(message: string, data: object = {}): void {
+    this.log(LogLevel.FATAL, message, data);
+  }
+  
+  private log(level: LogLevel, message: string, data: object = {}): void {
+    this.logger[level]({
+      ...this.context,
+      ...data,
+      timestamp: new Date().toISOString(),
+    }, message);
+  }
+}
+
+// Ejemplo de uso en una API
+/*
+const logger = new ApplicationLogger({ component: 'UserService' });
+
+// En un controlador HTTP
+app.get('/api/users/:id', (req, res) => {
+  const requestLogger = logger.child({
+    requestId: req.headers['x-request-id'],
+    userId: req.user?.id,
+    path: req.path,
+  });
+  
+  requestLogger.info('Procesando petición GET usuario');
+  
+  try {
+    // Lógica de negocio
+    requestLogger.debug('Consultando base de datos');
+    const user = userService.findById(req.params.id);
+    
+    if (!user) {
+      requestLogger.warn('Usuario no encontrado');
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    requestLogger.info('Usuario recuperado con éxito');
+    return res.json(user);
+  } catch (error) {
+    requestLogger.error('Error al recuperar usuario', { error });
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+*/
+```
+
+---
+
+## 🔄 Middleware de Logging para API
+
+### 1. Middleware para Next.js
+
+```typescript
+// middleware/logging.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+import { apiLogger } from '@/lib/logger/logger';
+
+export async function middleware(request: NextRequest) {
+  // Generar ID único para la petición si no existe
+  const requestId = request.headers.get('x-request-id') || uuidv4();
+  const startTime = Date.now();
+  
+  // Registrar inicio de la petición
+  apiLogger.info({
+    requestId,
+    method: request.method,
+    url: request.url,
+    userAgent: request.headers.get('user-agent'),
+    referer: request.headers.get('referer'),
+    ip: request.ip || request.headers.get('x-forwarded-for'),
+  }, 'API Request started');
+  
+  // Continuar con la petición
+  const response = NextResponse.next();
+  
+  // Añadir el ID de petición a la respuesta para seguimiento
+  response.headers.set('x-request-id', requestId);
+  
+  // Registrar finalización de la petición
+  const duration = Date.now() - startTime;
+  
+  apiLogger.info({
+    requestId,
+    method: request.method,
+    url: request.url,
+    status: response.status,
+    duration,
+    contentLength: response.headers.get('content-length'),
+  }, 'API Request completed');
+  
+  return response;
+}
+
+export const config = {
+  matcher: '/api/:path*',
+};
+```
+
+### 2. Middleware para Express
+
+```typescript
+// middleware/express-logger.ts
+import { Request, Response, NextFunction } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import { apiLogger } from '@/lib/logger/logger';
+
+export function requestLoggerMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Generar ID único para la petición si no existe
+  const requestId = req.headers['x-request-id'] as string || uuidv4();
+  req.headers['x-request-id'] = requestId;
+  
+  // Obtener timestamp inicial
+  const startTime = Date.now();
+  
+  // Registrar inicio de la petición
+  apiLogger.info({
+    requestId,
+    method: req.method,
+    url: req.originalUrl,
+    userAgent: req.headers['user-agent'],
+    referer: req.headers.referer,
+    ip: req.ip || req.headers['x-forwarded-for'],
+  }, 'API Request started');
+  
+  // Capturar respuesta
+  const originalEnd = res.end;
+  res.end = function(chunk?: any, encoding?: BufferEncoding) {
+    // Restaurar el método original
+    res.end = originalEnd;
+    
+    // Calcular duración
+    const duration = Date.now() - startTime;
+    
+    // Registrar finalización de la petición
+    apiLogger.info({
+      requestId,
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      duration,
+      contentLength: res.getHeader('content-length'),
+    }, 'API Request completed');
+    
+    // Continuar con la respuesta
+    return originalEnd.call(this, chunk, encoding);
+  };
+  
+  // Añadir el ID de petición a la respuesta
+  res.setHeader('x-request-id', requestId);
+  
+  next();
+}
+```
+
+---
+
+## 🚀 Logging de Eventos de Negocio
+
+### 1. Eventos de usuario
+
+```typescript
+// lib/events/user-events.ts
+import { createLogger } from '@/lib/logger/logger';
+import { anonymizeData } from '@/lib/security/data-protection';
+
+const userLogger = createLogger('user-events');
+
+type UserEventType = 
+  | 'user.registered'
+  | 'user.login'
+  | 'user.logout'
+  | 'user.profile_updated'
+  | 'user.password_changed'
+  | 'user.account_deleted';
+
+interface UserEventData {
+  userId: string;
+  email?: string;
+  username?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceInfo?: string;
+  timestamp: string;
+  success: boolean;
+  failureReason?: string;
+  [key: string]: any;
+}
+
+export function logUserEvent(
+  eventType: UserEventType,
+  data: Omit<UserEventData, 'timestamp'>
+): void {
+  // Anonimizar datos sensibles para cumplir con GDPR
+  const safeData = anonymizeData(data, ['email', 'ipAddress']);
+  
+  userLogger.info({
+    type: eventType,
+    ...safeData,
+    timestamp: new Date().toISOString(),
+  }, `User event: ${eventType}`);
+  
+  // Si es un evento crítico, también podríamos enviarlo a un sistema externo
+  if (eventType === 'user.account_deleted' || eventType === 'user.password_changed') {
+    // sendToExternalAuditSystem({ type: eventType, ...safeData });
+  }
+}
+
+// Ejemplo de uso
+// logUserEvent('user.login', {
+//   userId: '123',
+//   email: 'usuario@example.com',
+//   ipAddress: '192.168.1.1',
+//   userAgent: 'Mozilla/5.0...',
+//   success: true,
+// });
+```
+
+### 2. Eventos de transacciones
+
+```typescript
+// lib/events/transaction-events.ts
+import { createLogger } from '@/lib/logger/logger';
+
+const transactionLogger = createLogger('transactions');
+
+type TransactionEventType =
+  | 'transaction.initiated'
+  | 'transaction.processing'
+  | 'transaction.completed'
+  | 'transaction.failed'
+  | 'transaction.refunded';
+
+interface TransactionEventData {
+  transactionId: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  paymentMethod: string;
+  status: string;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export function logTransactionEvent(
+  eventType: TransactionEventType,
+  data: Omit<TransactionEventData, 'timestamp'>
+): void {
+  transactionLogger.info({
+    type: eventType,
+    ...data,
+    timestamp: new Date().toISOString(),
+  }, `Transaction event: ${eventType}`);
+}
+
+// Función específica para errores de transacción
+export function logTransactionError(
+  transactionId: string,
+  userId: string,
+  error: Error | unknown,
+  context: Record<string, any> = {}
+): void {
+  const errorDetails = error instanceof Error
+    ? { message: error.message, stack: error.stack }
+    : { error };
+    
+  transactionLogger.error({
+    type: 'transaction.failed',
+    transactionId,
+    userId,
+    ...context,
+    error: errorDetails,
+    timestamp: new Date().toISOString(),
+  }, `Transaction error for ${transactionId}`);
+}
+```
+
+---
+
+## 📊 Exportación y Análisis
+
+### 1. Exportación a servicios externos
+
+```typescript
+// lib/logger/exporters.ts
+import { createLogger } from './logger';
+import axios from 'axios';
+
+const exportLogger = createLogger('export');
+
+// Configuración para diferentes destinos
+interface LogDestination {
+  name: string;
+  url: string;
+  apiKey: string;
+  batchSize: number;
+}
+
+// Mantener una cola de logs para enviar por lotes
+const logQueues: Record<string, any[]> = {};
+
+// Enviar logs a servicios externos (New Relic, Datadog, ELK, etc.)
+export async function sendLogsToExternalService(
+  destination: LogDestination,
+  logs: any[]
+): Promise<boolean> {
+  try {
+    await axios.post(
+      destination.url,
+      { logs },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': destination.apiKey,
+        },
+      }
+    );
+    
+    exportLogger.info(
+      { destination: destination.name, count: logs.length },
+      'Logs sent to external service'
+    );
+    
+    return true;
+  } catch (error) {
+    exportLogger.error(
+      { destination: destination.name, error },
+      'Failed to send logs to external service'
+    );
+    
+    return false;
+  }
+}
+
+// Añadir log a la cola y enviar si alcanza el tamaño del lote
+export function queueLogForExport(
+  destinationName: string,
+  logData: any
+): void {
+  // Inicializar cola si no existe
+  if (!logQueues[destinationName]) {
+    logQueues[destinationName] = [];
+  }
+  
+  // Añadir a la cola
+  logQueues[destinationName].push(logData);
+  
+  // Obtener configuración del destino
+  const destination = getDestinationConfig(destinationName);
+  
+  // Enviar si alcanzamos el tamaño del lote
+  if (logQueues[destinationName].length >= destination.batchSize) {
+    const logsToSend = [...logQueues[destinationName]];
+    logQueues[destinationName] = [];
+    
+    sendLogsToExternalService(destination, logsToSend).catch(() => {
+      // En caso de error, volver a añadir a la cola
+      logQueues[destinationName] = [...logsToSend, ...logQueues[destinationName]];
+    });
+  }
+}
+
+// Función auxiliar para obtener configuración
+function getDestinationConfig(name: string): LogDestination {
+  const destinations: Record<string, LogDestination> = {
+    'datadog': {
+      name: 'datadog',
+      url: process.env.DATADOG_LOGS_URL || 'https://http-intake.logs.datadoghq.com/v1/input',
+      apiKey: process.env.DATADOG_API_KEY || '',
+      batchSize: 100,
+    },
+    'elasticsearch': {
+      name: 'elasticsearch',
+      url: process.env.ELASTICSEARCH_URL || 'http://localhost:9200/_bulk',
+      apiKey: process.env.ELASTICSEARCH_API_KEY || '',
+      batchSize: 50,
+    },
+  };
+  
+  return destinations[name] || destinations['elasticsearch'];
+}
+
+// Configurar envío periódico de logs (incluso si no se alcanza el tamaño del lote)
+export function setupPeriodicExport(intervalMs = 30000): NodeJS.Timeout {
+  return setInterval(() => {
+    for (const [destinationName, queue] of Object.entries(logQueues)) {
+      if (queue.length > 0) {
+        const destination = getDestinationConfig(destinationName);
+        const logsToSend = [...queue];
+        logQueues[destinationName] = [];
+        
+        sendLogsToExternalService(destination, logsToSend).catch(() => {
+          logQueues[destinationName] = [...logsToSend, ...logQueues[destinationName]];
+        });
+      }
+    }
+  }, intervalMs);
+}
+```
+
+### 2. Análisis de logs
+
+```typescript
+// scripts/log-analysis.ts
+import fs from 'fs/promises';
+import path from 'path';
+import readline from 'readline';
+
+interface LogAnalysisOptions {
+  logFilePath: string;
+  startDate?: Date;
+  endDate?: Date;
+  levelFilter?: string[];
+  contextFilter?: string[];
+  outputPath?: string;
+}
+
+interface LogAnalysisResult {
+  totalLogs: number;
+  logsByLevel: Record<string, number>;
+  logsByContext: Record<string, number>;
+  errorsByMessage: Record<string, number>;
+  apiEndpointStats: Record<string, {
+    count: number;
+    avgResponseTime: number;
+    errorRate: number;
+  }>;
+  topSlowRequests: Array<{
+    url: string;
+    method: string;
+    duration: number;
+    timestamp: string;
+  }>;
+  ipsWithMostRequests: Array<[string, number]>;
+}
+
+async function analyzeLogFile(options: LogAnalysisOptions): Promise<LogAnalysisResult> {
+  const fileStream = fs.createReadStream(options.logFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+  
+  const result: LogAnalysisResult = {
+    totalLogs: 0,
+    logsByLevel: {},
+    logsByContext: {},
+    errorsByMessage: {},
+    apiEndpointStats: {},
+    topSlowRequests: [],
+    ipsWithMostRequests: [],
+  };
+  
+  const ipCounts: Record<string, number> = {};
+  
+  for await (const line of rl) {
+    try {
+      // Parsear la línea de log (formato JSON)
+      const log = JSON.parse(line);
+      
+      // Filtrar por fecha si se especifica
+      if (options.startDate || options.endDate) {
+        const logDate = new Date(log.timestamp || log.time);
+        if (options.startDate && logDate < options.startDate) continue;
+        if (options.endDate && logDate > options.endDate) continue;
+      }
+      
+      // Filtrar por nivel
+      if (options.levelFilter && !options.levelFilter.includes(log.level)) {
+        continue;
+      }
+      
+      // Filtrar por contexto
+      if (options.contextFilter && !options.contextFilter.includes(log.context)) {
+        continue;
+      }
+      
+      // Incrementar contadores
+      result.totalLogs++;
+      
+      // Contar por nivel
+      result.logsByLevel[log.level] = (result.logsByLevel[log.level] || 0) + 1;
+      
+      // Contar por contexto
+      if (log.context) {
+        result.logsByContext[log.context] = (result.logsByContext[log.context] || 0) + 1;
+      }
+      
+      // Analizar errores
+      if (log.level === 'error' || log.level === 'fatal') {
+        const errorMsg = log.message || (log.error?.message || 'Unknown error');
+        result.errorsByMessage[errorMsg] = (result.errorsByMessage[errorMsg] || 0) + 1;
+      }
+      
+      // Analizar peticiones API
+      if (log.context === 'api' && log.method && log.url) {
+        const endpoint = `${log.method} ${new URL(log.url).pathname}`;
+        
+        if (!result.apiEndpointStats[endpoint]) {
+          result.apiEndpointStats[endpoint] = {
+            count: 0,
+            avgResponseTime: 0,
+            errorRate: 0,
+          };
+        }
+        
+        const stats = result.apiEndpointStats[endpoint];
+        stats.count++;
+        
+        // Calcular tiempo de respuesta medio
+        if (log.duration) {
+          stats.avgResponseTime = (stats.avgResponseTime * (stats.count - 1) + log.duration) / stats.count;
+          
+          // Guardar peticiones lentas
+          if (log.duration > 1000) { // Más de 1 segundo
+            result.topSlowRequests.push({
+              url: log.url,
+              method: log.method,
+              duration: log.duration,
+              timestamp: log.timestamp,
+            });
+          }
+        }
+        
+        // Calcular tasa de error
+        if (log.status && log.status >= 400) {
+          stats.errorRate = ((stats.errorRate * (stats.count - 1)) + 1) / stats.count;
+        }
+        
+        // Contar IPs
+        if (log.ip) {
+          ipCounts[log.ip] = (ipCounts[log.ip] || 0) + 1;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing log line:', error);
+      // Continuar con la siguiente línea
+    }
+  }
+  
+  // Ordenar peticiones lentas
+  result.topSlowRequests.sort((a, b) => b.duration - a.duration);
+  result.topSlowRequests = result.topSlowRequests.slice(0, 10); // Top 10
+  
+  // Ordenar IPs por número de peticiones
+  result.ipsWithMostRequests = Object.entries(ipCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20); // Top 20
+  
+  // Guardar resultado en archivo si se especifica
+  if (options.outputPath) {
+    await fs.writeFile(
+      options.outputPath,
+      JSON.stringify(result, null, 2),
+      'utf8'
+    );
+  }
+  
+  return result;
+}
+
+// Ejemplo de uso
+/*
+analyzeLogFile({
+  logFilePath: path.join(process.cwd(), 'logs', 'api.log'),
+  startDate: new Date('2023-01-01'),
+  endDate: new Date(),
+  levelFilter: ['error', 'fatal'],
+  outputPath: path.join(process.cwd(), 'reports', 'error-analysis.json'),
+}).then(result => {
+  console.log(`Analizadas ${result.totalLogs} líneas de log`);
+  console.log(`Encontrados ${Object.keys(result.errorsByMessage).length} tipos de errores`);
+});
+*/
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Logging)
+
+- Implementar una estrategia de logging con niveles claramente definidos (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
+- Utilizar contextos específicos para categorizar logs (api, db, auth, etc.)
+- Añadir un ID único a cada petición para poder rastrearla a través de diferentes sistemas
+- Asegurar que información sensible (contraseñas, tokens, PII) nunca se registre en logs
+- Implementar rotación de logs para evitar archivos demasiado grandes
+- Usar formatos estructurados (JSON) para facilitar el procesamiento automático
+- Registrar duración de operaciones críticas (peticiones API, consultas DB)
+- Incluir suficiente contexto en cada log para diagnóstico (pero sin datos sensibles)
+- Configurar el nivel de logging según el entorno (más detalle en desarrollo, menos en producción)
+- Implementar exportación a sistemas de análisis (ELK, Datadog, New Relic)
+- Registrar todos los eventos de seguridad (login, logout, cambios de permisos)
+- Incluir marcas de tiempo en formato ISO 8601 en cada log
+- Añadir información de llamadas a servicios externos y sus resultados
+- Registrar peticiones/respuestas API con metadata relevante (sin datos sensibles)
+- Implementar un mecanismo de limpieza y retención de logs según normativas
+- Centralizar la configuración de logging para facilitar cambios globales
+- Registrar todos los errores con stack trace completo
+- Evitar que fallos en el logging bloqueen la funcionalidad principal
+- Aplicar límites razonables al tamaño de los objetos registrados
+- Establecer alertas para patrones de error específicos 

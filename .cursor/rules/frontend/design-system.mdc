@@ -1,0 +1,561 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: design-system.mdc
+
+## 🎯 Propósito
+Establecer un sistema de diseño cohesivo y mantenible basado en componentes, tokens y patrones que garanticen consistencia visual, accesibilidad y reutilización a través del proyecto, mientras se mantiene la escalabilidad para futuros cambios.
+
+---
+
+## 🎨 Tokens de diseño
+
+### 1. Colores
+```typescript
+// lib/design-system/tokens/colors.ts
+export const colors = {
+  // Colores de marca (personalizar por proyecto)
+  brand: {
+    primary: {
+      50: '#f0f9ff',
+      100: '#e0f2fe',
+      200: '#bae6fd',
+      300: '#7dd3fc',
+      400: '#38bdf8',
+      500: '#0ea5e9',
+      600: '#0284c7',
+      700: '#0369a1',
+      800: '#075985',
+      900: '#0c4a6e',
+      950: '#082f49',
+    },
+    secondary: {
+      // ...similar estructura
+    },
+  },
+
+  // Neutros (constantes)
+  neutral: {
+    50: '#f9fafb',
+    100: '#f3f4f6',
+    200: '#e5e7eb',
+    300: '#d1d5db',
+    400: '#9ca3af',
+    500: '#6b7280',
+    600: '#4b5563',
+    700: '#374151',
+    800: '#1f2937',
+    900: '#111827',
+    950: '#030712',
+  },
+
+  // Estados y feedback
+  status: {
+    error: '#ef4444',
+    warning: '#f59e0b',
+    success: '#10b981',
+    info: '#3b82f6',
+  },
+};
+```
+
+### 2. Tipografía
+```typescript
+// lib/design-system/tokens/typography.ts
+export const fontFamily = {
+  sans: ['Inter var', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  serif: ['Georgia', 'Cambria', 'ui-serif', 'serif'],
+  mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+};
+
+export const fontSize = {
+  xs: ['0.75rem', { lineHeight: '1rem' }],      // 12px
+  sm: ['0.875rem', { lineHeight: '1.25rem' }],  // 14px
+  base: ['1rem', { lineHeight: '1.5rem' }],     // 16px
+  lg: ['1.125rem', { lineHeight: '1.75rem' }],  // 18px
+  xl: ['1.25rem', { lineHeight: '1.75rem' }],   // 20px
+  '2xl': ['1.5rem', { lineHeight: '2rem' }],    // 24px
+  '3xl': ['1.875rem', { lineHeight: '2.25rem' }], // 30px
+  '4xl': ['2.25rem', { lineHeight: '2.5rem' }], // 36px
+  '5xl': ['3rem', { lineHeight: '1' }],         // 48px
+  '6xl': ['3.75rem', { lineHeight: '1' }],      // 60px
+};
+
+export const fontWeight = {
+  thin: '100',
+  extralight: '200',
+  light: '300',
+  normal: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+  extrabold: '800',
+  black: '900',
+};
+```
+
+### 3. Espaciado y Layout
+```typescript
+// lib/design-system/tokens/spacing.ts
+export const spacing = {
+  px: '1px',
+  0: '0',
+  0.5: '0.125rem', // 2px
+  1: '0.25rem',    // 4px
+  1.5: '0.375rem', // 6px
+  2: '0.5rem',     // 8px
+  2.5: '0.625rem', // 10px
+  3: '0.75rem',    // 12px
+  3.5: '0.875rem', // 14px
+  4: '1rem',       // 16px
+  5: '1.25rem',    // 20px
+  6: '1.5rem',     // 24px
+  7: '1.75rem',    // 28px
+  8: '2rem',       // 32px
+  9: '2.25rem',    // 36px
+  10: '2.5rem',    // 40px
+  11: '2.75rem',   // 44px
+  12: '3rem',      // 48px
+  14: '3.5rem',    // 56px
+  16: '4rem',      // 64px
+  20: '5rem',      // 80px
+  24: '6rem',      // 96px
+  28: '7rem',      // 112px
+  32: '8rem',      // 128px
+  36: '9rem',      // 144px
+  40: '10rem',     // 160px
+  44: '11rem',     // 176px
+  48: '12rem',     // 192px
+  52: '13rem',     // 208px
+  56: '14rem',     // 224px
+  60: '15rem',     // 240px
+  64: '16rem',     // 256px
+  72: '18rem',     // 288px
+  80: '20rem',     // 320px
+  96: '24rem',     // 384px
+};
+```
+
+### 4. Breakpoints
+```typescript
+// lib/design-system/tokens/breakpoints.ts
+export const screens = {
+  xs: '320px',     // Mobile small
+  sm: '640px',     // Mobile large
+  md: '768px',     // Tablet
+  lg: '1024px',    // Desktop small
+  xl: '1280px',    // Desktop medium
+  '2xl': '1536px', // Desktop large
+};
+
+// Media query helpers
+export const mediaQueries = {
+  xs: `@media (min-width: ${screens.xs})`,
+  sm: `@media (min-width: ${screens.sm})`,
+  md: `@media (min-width: ${screens.md})`,
+  lg: `@media (min-width: ${screens.lg})`,
+  xl: `@media (min-width: ${screens.xl})`,
+  '2xl': `@media (min-width: ${screens['2xl']})`,
+};
+```
+
+---
+
+## 🧩 Componentes base
+
+### 1. Configuración en TailwindCSS
+```javascript
+// tailwind.config.js
+const { colors, fontFamily, fontSize, spacing } = require('./lib/design-system/tokens');
+
+module.exports = {
+  content: [
+    './app/**/*.{js,ts,jsx,tsx}',
+    './pages/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+  ],
+  darkMode: 'class', // o 'media'
+  theme: {
+    colors,
+    fontFamily,
+    fontSize,
+    spacing,
+    extend: {
+      // Extensiones específicas
+    },
+  },
+  plugins: [
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
+    require('@tailwindcss/aspect-ratio'),
+  ],
+};
+```
+
+### 2. Componentes Atómicos
+
+```tsx
+// components/ui/Button.tsx
+import React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+
+const buttonVariants = cva(
+  'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary-700 disabled:opacity-50 disabled:pointer-events-none',
+  {
+    variants: {
+      variant: {
+        primary: 'bg-brand-primary-600 text-white hover:bg-brand-primary-700',
+        secondary: 'bg-neutral-100 text-neutral-900 hover:bg-neutral-200',
+        outline: 'border border-brand-primary-600 text-brand-primary-600 hover:bg-brand-primary-50',
+        ghost: 'text-brand-primary-600 hover:bg-brand-primary-50',
+        link: 'text-brand-primary-600 underline-offset-4 hover:underline',
+        danger: 'bg-red-600 text-white hover:bg-red-700',
+      },
+      size: {
+        xs: 'h-7 px-2 text-xs',
+        sm: 'h-9 px-3 text-sm',
+        md: 'h-10 px-4 text-sm',
+        lg: 'h-11 px-8 text-base',
+        xl: 'h-14 px-10 text-lg',
+      },
+      fullWidth: {
+        true: 'w-full',
+      },
+    },
+    defaultVariants: {
+      variant: 'primary',
+      size: 'md',
+    },
+  }
+);
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+  icon?: React.ReactNode;
+  iconPosition?: 'left' | 'right';
+  loading?: boolean;
+}
+
+export function Button({
+  className,
+  variant,
+  size,
+  fullWidth,
+  icon,
+  iconPosition = 'left',
+  loading = false,
+  disabled,
+  children,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      className={cn(buttonVariants({ variant, size, fullWidth, className }))}
+      disabled={disabled || loading}
+      {...props}
+    >
+      {loading && (
+        <svg
+          className="mr-2 h-4 w-4 animate-spin"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          ></circle>
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+      )}
+      {icon && iconPosition === 'left' && !loading && <span className="mr-2">{icon}</span>}
+      {children}
+      {icon && iconPosition === 'right' && <span className="ml-2">{icon}</span>}
+    </button>
+  );
+}
+```
+
+### 3. Utilidades comunes
+```typescript
+// lib/utils/cn.ts
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+// Combina clases de Tailwind evitando duplicados y conflictos
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+---
+
+## 📝 Documentación del sistema
+
+### 1. Catálogo de componentes
+```tsx
+// app/design-system/page.tsx
+export default function DesignSystemPage() {
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-12">
+      <h1 className="text-3xl font-bold mb-8">Sistema de Diseño</h1>
+      
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4">Colores</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {/* Renderizar swatches de colores */}
+          {/* ... */}
+        </div>
+      </section>
+      
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4">Tipografía</h2>
+        {/* Mostrar ejemplos de texto */}
+        {/* ... */}
+      </section>
+      
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4">Botones</h2>
+        <div className="flex flex-wrap gap-4 mb-4">
+          <Button variant="primary">Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="outline">Outline</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="link">Link</Button>
+          <Button variant="danger">Danger</Button>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <Button size="xs">Extra Small</Button>
+          <Button size="sm">Small</Button>
+          <Button size="md">Medium</Button>
+          <Button size="lg">Large</Button>
+          <Button size="xl">Extra Large</Button>
+        </div>
+      </section>
+      
+      {/* Otras secciones para inputs, cards, etc */}
+    </div>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Toda UI debe construirse utilizando los componentes de este sistema de diseño
+- No usar colores o valores de espaciado arbitrarios fuera del sistema de tokens
+- Cada componente debe ser accesible (mínimo WCAG 2.1 AA)
+- Todos los componentes deben soportar tema claro y oscuro
+- Mantener documentación actualizada en la página del sistema de diseño
+- Extender componentes existentes antes de crear nuevos
+- Mantener consistencia en la API para todos los componentes (props similares)
+- Usar TailwindCSS con las variables del sistema de tokens definidas 
+
+---
+
+## 🌩️ Optimización de assets para Cloudflare y Vercel
+
+### Imágenes con Cloudflare Images
+
+```tsx
+// components/ui/CloudflareImage.tsx
+import React from 'react';
+import Image from 'next/image';
+import { cn } from '@/lib/utils';
+
+interface CloudflareImageProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  className?: string;
+  variant?: 'public' | 'authenticated';
+  quality?: number;
+}
+
+export function CloudflareImage({
+  src,
+  alt,
+  width,
+  height,
+  className,
+  variant = 'public',
+  quality = 80,
+  ...props
+}: CloudflareImageProps) {
+  // Construir URL para Cloudflare Images
+  const baseUrl = process.env.NEXT_PUBLIC_CLOUDFLARE_IMAGES_DOMAIN || 'imagedelivery.net/tu-account-hash';
+  const variantPath = variant === 'public' ? 'public' : 'authenticated';
+  
+  // URL completa para Cloudflare Images
+  const imageUrl = `https://${baseUrl}/${src}/${variantPath}`;
+  
+  return (
+    <div className={cn('overflow-hidden', className)}>
+      <Image
+        src={imageUrl}
+        alt={alt}
+        width={width}
+        height={height}
+        quality={quality}
+        {...props}
+      />
+    </div>
+  );
+}
+```
+
+### Componente de imagen adaptativo
+
+```tsx
+// components/ui/ResponsiveImage.tsx
+import React from 'react';
+import Image from 'next/image';
+import { cn } from '@/lib/utils';
+
+interface ResponsiveImageProps {
+  src: string;
+  alt: string;
+  className?: string;
+  sizes?: string;
+  priority?: boolean;
+}
+
+export function ResponsiveImage({
+  src,
+  alt,
+  className,
+  sizes = '(min-width: 1024px) 1024px, 100vw',
+  priority = false,
+  ...props
+}: ResponsiveImageProps) {
+  return (
+    <div className={cn('w-full relative', className)}>
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        sizes={sizes}
+        priority={priority}
+        className="object-cover"
+        {...props}
+      />
+    </div>
+  );
+}
+```
+
+### Custom loader para Cloudflare Images
+
+```typescript
+// lib/cloudflare-image-loader.ts
+export default function cloudflareImageLoader({
+  src,
+  width,
+  quality,
+}: {
+  src: string;
+  width: number;
+  quality?: number;
+}) {
+  const params = [`width=${width}`];
+  
+  if (quality) {
+    params.push(`quality=${quality}`);
+  }
+  
+  // Trabajar con ID de imagen directo de Cloudflare
+  if (src.startsWith('cloudflare:')) {
+    const imageId = src.replace('cloudflare:', '');
+    return `https://imagedelivery.net/tu-account-hash/${imageId}/${params.join(',')}`;
+  }
+  
+  // Si es URL completa, enviar como está
+  if (src.startsWith('http')) {
+    return src;
+  }
+  
+  // URL relativa, asumir es un ID de Cloudflare Images
+  return `https://imagedelivery.net/tu-account-hash/${src}/${params.join(',')}`;
+}
+```
+
+### Configuración en next.config.js
+
+```javascript
+// next.config.js (fragmento para imágenes)
+module.exports = {
+  images: {
+    domains: [
+      'imagedelivery.net', // Cloudflare Images
+      'res.cloudinary.com',
+      'images.unsplash.com',
+    ],
+    // Opcional: Usar loader personalizado
+    // loader: 'custom',
+    // loaderFile: './lib/cloudflare-image-loader.ts',
+  },
+}
+```
+
+### Estrategia de carga de fuentes
+
+```typescript
+// app/layout.tsx
+import { Inter, JetBrains_Mono } from 'next/font/google';
+
+// Optimización de fuentes con next/font
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+  preload: true,
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas adicionales para Cloudflare y Vercel
+
+- Utilizar Cloudflare Images para optimización automática de imágenes
+- Implementar lazy loading para todas las imágenes no prioritarias
+- Establecer tamaños responsivos con el atributo sizes en imágenes
+- Precargar imágenes críticas con priority={true}
+- Optimizar formato WebP/AVIF para imágenes vía Cloudflare
+- Configurar Automatic Platform Optimization en Cloudflare
+- Establecer políticas de caché específicas para assets estáticos
+- Utilizar next/font para optimización de fuentes web
+- Implementar preconexiones a dominios de imágenes/CDN
+- Servir assets grandes mediante URLs firmadas de Cloudflare 

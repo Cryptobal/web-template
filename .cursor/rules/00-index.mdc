@@ -1,0 +1,83 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: Índice Maestro del Sistema de Reglas
+
+## 🎯 Propósito
+Este documento sirve como punto de entrada y mapa de navegación para el sistema completo de reglas Cursor. Proporciona una visión general de todas las categorías y reglas, facilitando la comprensión y navegación del sistema.
+
+---
+
+## 🗺️ Mapa del Sistema
+
+### Accesibilidad
+- **wcag-standards.mdc**: Implementación de WCAG 2.1 AA
+- **aria-keyboard-nav.mdc**: Navegación por teclado y ARIA
+
+### Analytics
+- **consent-manager.mdc**: Gestión de consentimiento de cookies
+- **tracking-conversiones.mdc**: Seguimiento de eventos y conversiones
+
+### Backend
+- **cms-integracion.mdc**: Integración con CMS headless
+- **error-monitoring.mdc**: Monitoreo de errores en backend
+- **lead-capturing-api.mdc**: API para formularios de contacto/leads
+- **metadatos-dinamicos.mdc**: Metadatos dinámicos para SEO
+- **schema-org.mdc**: Implementación de Schema.org
+
+### Base
+- **browser-support.mdc**: Navegadores soportados y polyfills
+- **env-variables.mdc**: Gestión de variables de entorno
+- **estructura-carpetas.mdc**: Estructura del proyecto
+- **next-config.mdc**: Configuración de Next.js
+- **seguridad.mdc**: Medidas de seguridad
+- **typescript.mdc**: Configuración y convenciones de TypeScript
+- **versioning.mdc**: Sistema de versionado y actualización
+
+### DevOps
+- **cache-strategy.mdc**: Estrategias de caché
+- **ci-cd.mdc**: Integración y despliegue continuo
+- **deploy.mdc**: Proceso de despliegue
+- **logging-strategy.mdc**: Estrategia de logs
+- **security-audit.mdc**: Auditoría de seguridad
+- **testing.mdc**: Estrategias de testing
+
+#### Cloudflare-Vercel
+- **integracion.mdc**: Integración entre Cloudflare y Vercel
+- **rendimiento.mdc**: Optimización de rendimiento específica
+
+### Documentación
+- **code-standards.mdc**: Estándares de código
+- **onboarding.mdc**: Onboarding para nuevos desarrolladores
+
+### Frontend
+- **componente-cotizar.mdc**: Componente de cotización
+- **componentes-ux.mdc**: Componentes UI/UX
+- **design-system.mdc**: Sistema de diseño
+- **error-handling.mdc**: Manejo de errores en frontend
+- **footer.mdc**: Componente Footer
+- **front-end.mdc**: Estructura general de frontend
+- **header.mdc**: Componente Header
+- **i18n.mdc**: Internacionalización
+- **performance.mdc**: Optimización de rendimiento
+- **pwa-offline.mdc**: Funcionalidad offline y PWA
+- **sitemap-robots.mdc**: Configuración de Sitemap y Robots.txt
+- **webchat-injection.mdc**: Inyección de webchat
+
+#### Imágenes
+- **image-optimization.mdc**: Optimización de imágenes
+
+### Legal
+- **compliance.mdc**: Cumplimiento normativo
+
+---
+
+## 🚀 Cómo usar este sistema
+
+1. **Para nuevos proyectos**: Revisa primero `documentacion/onboarding.mdc`
+2. **Para consultas específicas**: Navega a la categoría relevante
+3. **Para actualizar reglas**: Sigue el proceso en `base/versioning.mdc`
+
+Este sistema está diseñado para evolucionar. Si encuentras vacíos o necesitas nuevas reglas, consulta el proceso de contribución en la documentación.

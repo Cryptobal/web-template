@@ -1,0 +1,413 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: cloudflare-vercel-rendimiento.mdc
+
+## 🎯 Propósito
+Definir las mejores prácticas, configuraciones y estrategias para optimizar el rendimiento de aplicaciones web alojadas en Vercel con Cloudflare como CDN, asegurando tiempos de carga mínimos, Core Web Vitals óptimos y experiencia de usuario superior.
+
+---
+
+## ⚡ Estrategias de optimización global
+
+### 1. Arquitectura de caché en capas
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│             │     │             │     │             │     │             │
+│   Browser   │◄───▶│  Cloudflare │◄───▶│   Vercel    │◄───▶│   Next.js   │
+│    Cache    │     │  Edge Cache │     │  Edge Cache │     │    Cache    │
+│             │     │             │     │             │     │             │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### 2. Priorización de core web vitals
+
+| Métrica | Objetivo | Estrategia principal |
+|---------|----------|----------------------|
+| LCP     | < 2.5s   | Optimización de imágenes, caché agresiva |
+| FID     | < 100ms  | Reducción de JavaScript, código crítico inline |
+| CLS     | < 0.1    | Reserva de espacio para imágenes y anuncios |
+| TTFB    | < 200ms  | Cloudflare APO, Edge Functions, cachés estáticas |
+
+---
+
+## 🖼️ Optimización de imágenes
+
+### 1. Configuración Next.js con Cloudflare Images
+
+```javascript
+// next.config.js
+module.exports = {
+  images: {
+    domains: ['imagedelivery.net'],
+    // Loader personalizado para Cloudflare
+    loader: 'custom',
+    loaderFile: './lib/cloudflare-image-loader.js',
+  },
+};
+
+// lib/cloudflare-image-loader.js
+export default function cloudflareImageLoader({
+  src,
+  width,
+  quality,
+}) {
+  // Formato para Cloudflare Images
+  return `https://imagedelivery.net/tu-account-hash/${src}/${width},quality=${quality || 75}`;
+}
+```
+
+### 2. Polish de Cloudflare
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Speed > Optimization
+2. En la sección Polish, activar:
+   - Convertir automáticamente imágenes a formatos WebP/AVIF
+   - Comprimir imágenes
+   - Nivel: Lossless (sin pérdida) o Lossy (con pérdida)
+```
+
+### 3. Componente de imagen optimizado
+
+```tsx
+// components/OptimizedImage.tsx
+import Image from 'next/image';
+import { useState, useEffect } from 'react';
+
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  priority?: boolean;
+  className?: string;
+}
+
+export function OptimizedImage({
+  src,
+  alt,
+  width,
+  height,
+  priority = false,
+  className,
+}: OptimizedImageProps) {
+  const [loaded, setLoaded] = useState(false);
+  
+  // Precarga para imágenes LCP
+  useEffect(() => {
+    if (priority) {
+      const img = new Image();
+      img.src = src;
+    }
+  }, [src, priority]);
+  
+  return (
+    <div
+      className={`relative overflow-hidden ${className}`}
+      style={{ aspectRatio: `${width}/${height}` }}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        sizes={`(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw`}
+        priority={priority}
+        className={`object-cover transition-opacity duration-500 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        }`}
+        onLoadingComplete={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## 🚀 Optimización de JS y CSS
+
+### 1. Configuración de Minify y Bundling
+
+```javascript
+// next.config.js
+module.exports = {
+  swcMinify: true,
+  
+  // Optimización para Vercel
+  experimental: {
+    optimizeCss: true,   // Minificar CSS
+    nextScriptWorkers: true,  // Workers para scripts
+  },
+};
+```
+
+### 2. Cloudflare Auto Minify
+
+```
+1. Ir a Cloudflare Dashboard > [Dominio] > Speed > Optimization
+2. Activar Auto Minify para:
+   - JavaScript
+   - CSS
+   - HTML
+```
+
+### 3. Script de carga eficiente
+
+```tsx
+// Componente para carga perezosa de scripts
+import { useEffect, useState } from 'react';
+
+export function LazyScript({ src, id, strategy = 'afterInteractive' }) {
+  const [loaded, setLoaded] = useState(false);
+  
+  useEffect(() => {
+    if (strategy === 'afterInteractive') {
+      loadScript();
+    } else if (strategy === 'onVisible') {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          loadScript();
+          observer.disconnect();
+        }
+      });
+      
+      observer.observe(document.body);
+      return () => observer.disconnect();
+    }
+    
+    function loadScript() {
+      if (document.getElementById(id)) return;
+      
+      const script = document.createElement('script');
+      script.id = id;
+      script.src = src;
+      script.async = true;
+      script.onload = () => setLoaded(true);
+      
+      document.body.appendChild(script);
+    }
+  }, [id, src, strategy]);
+  
+  return null;
+}
+
+// Uso
+<LazyScript
+  id="analytics"
+  src="https://analytics.example.com/script.js"
+  strategy="onVisible"
+/>
+```
+
+---
+
+## 🔄 Caché y streaming
+
+### 1. Configuración ISR con Cloudflare
+
+```typescript
+// app/productos/[id]/page.tsx
+export const revalidate = 3600; // Revalidar cada hora
+
+export async function generateStaticParams() {
+  const productos = await getProductosDestacados();
+  return productos.map(producto => ({ id: producto.id }));
+}
+
+export default async function ProductoPage({ params }) {
+  // Contenido de la página...
+}
+```
+
+### 2. Edge Runtime para API routes
+
+```typescript
+// app/api/datos/route.ts
+export const runtime = 'edge';
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const id = url.searchParams.get('id');
+  
+  // Añadir headers para Cloudflare
+  const data = await fetchData(id);
+  
+  return new Response(JSON.stringify(data), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+      'CDN-Cache-Control': 'public, max-age=300',
+    },
+  });
+}
+```
+
+### 3. Cloudflare Page Rules para caché
+
+```
+// Regla para API
+URL: https://tusitio.com/api/*
+Configuración:
+- Cache Level: Standard
+- Edge Cache TTL: 2 hours
+- Browser Cache TTL: 5 minutes
+
+// Regla para archivos estáticos 
+URL: https://tusitio.com/*.(js|css|woff2)
+Configuración:
+- Cache Level: Cache Everything
+- Edge Cache TTL: 1 week
+- Browser Cache TTL: 1 week
+```
+
+---
+
+## 🔌 Optimización con Cloudflare Workers
+
+### 1. Early Hints con Cloudflare
+
+```javascript
+// cloudflare-worker.js
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request) {
+  // Enviar early hints para precargar assets críticos
+  const earlyHintsResponse = new Response(null, {
+    status: 103,
+    headers: {
+      'Link': '</styles.css>; rel=preload; as=style, </critical.js>; rel=preload; as=script',
+    },
+  });
+  
+  // Enviar early hints mientras se procesa la respuesta principal
+  const [response] = await Promise.all([
+    fetch(request),
+    new Promise(resolve => setTimeout(resolve, 10)) // Asegurar envío de early hints
+  ]);
+  
+  // Añadir headers de optimización a la respuesta final
+  const newResponse = new Response(response.body, response);
+  newResponse.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+  
+  return newResponse;
+}
+```
+
+### 2. Optimización de HTML con Workers
+
+```javascript
+// html-optimizer-worker.js
+addEventListener('fetch', event => {
+  event.respondWith(optimizeHTML(event.request));
+});
+
+async function optimizeHTML(request) {
+  const response = await fetch(request);
+  
+  // Solo procesar respuestas HTML
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/html')) {
+    return response;
+  }
+  
+  // Obtener y optimizar el HTML
+  const html = await response.text();
+  
+  // Optimizaciones:
+  // 1. Insertar preconnect para dominios externos críticos
+  // 2. Inlinar CSS crítico
+  // 3. Cargar scripts no críticos de forma diferida
+  const optimizedHtml = html
+    .replace('</head>', `
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://cdn.cloudflare.com" crossorigin>
+      <style id="critical-css">
+        /* CSS crítico inlinado */
+        body { display: block; font-family: sans-serif; margin: 0; }
+        header { height: 60px; background: #f5f5f5; }
+        /* ... */
+      </style>
+      </head>
+    `)
+    .replace(/<script src="((?!critical).)*\.js"/g, '<script defer src="$&"');
+  
+  // Devolver HTML optimizado
+  return new Response(optimizedHtml, {
+    headers: {
+      ...Object.fromEntries(response.headers),
+      'content-type': 'text/html',
+      'content-length': optimizedHtml.length,
+    },
+  });
+}
+```
+
+---
+
+## 📊 Monitoreo de rendimiento
+
+### 1. Configuración con Web Vitals en frontend
+
+```typescript
+// lib/vitals.ts
+import { getLCP, getFID, getCLS, getTTFB, getFCP } from 'web-vitals';
+
+export function reportWebVitals(metric) {
+  // Enviar a analytics
+  console.log(metric);
+  
+  // Enviar a endpoint personalizado
+  const body = JSON.stringify({
+    name: metric.name,
+    value: metric.value,
+    id: metric.id,
+  });
+  
+  navigator.sendBeacon('/api/vitals', body);
+}
+
+// Uso en _app.tsx o similar
+export function reportWebVitals() {
+  if (typeof window !== 'undefined') {
+    getCLS(metric => sendToAnalytics(metric));
+    getFID(metric => sendToAnalytics(metric));
+    getLCP(metric => sendToAnalytics(metric));
+    getFCP(metric => sendToAnalytics(metric));
+    getTTFB(metric => sendToAnalytics(metric));
+  }
+}
+```
+
+### 2. Monitoreo en Vercel y Cloudflare
+
+```
+// Vercel Analytics
+1. Dashboard de Vercel > Analytics > Web Vitals
+2. Activar Speed Insights
+3. Configurar alertas para degradaciones
+
+// Cloudflare Web Analytics
+1. Dashboard de Cloudflare > Analytics > Web Analytics
+2. Verificar métricas de Core Web Vitals
+3. Analizar tiempos de carga por región geográfica
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Implementar sistema de caché en capas (Browser > Cloudflare > Vercel > Next.js)
+- Utilizar Cloudflare Polish para optimización automática de imágenes
+- Configurar Edge Functions de Vercel para contenido dinámico sensible a latencia
+- Activar Auto Minify de Cloudflare para todos los recursos
+- Implementar Early Hints con Cloudflare Workers para precargar recursos críticos
+- Usar ISR (Incremental Static Regeneration) con revalidación optimizada
+- Configurar headers específicos para Cloudflare en todas las respuestas
+- Monitorear Web Vitals tanto en Vercel como en Cloudflare Analytics
+- Implementar lazy loading para contenido bajo el pliegue
+- Habilitar HTTP/3 y QUIC en Cloudflare para conexiones más rápidas

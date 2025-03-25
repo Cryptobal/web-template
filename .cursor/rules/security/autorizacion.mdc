@@ -1,0 +1,806 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla: autorizacion.mdc
+
+## 🎯 Propósito
+Establecer un sistema robusto de control de acceso basado en roles (RBAC) y permisos para proteger recursos y funcionalidades, asegurando que los usuarios solo puedan acceder a lo que están autorizados.
+
+---
+
+## 🔐 Implementación de RBAC (Control de Acceso Basado en Roles)
+
+### 1. Definición de Roles y Permisos
+
+```typescript
+// lib/auth/roles.ts
+export enum UserRole {
+  GUEST = 'guest',
+  USER = 'user',
+  EDITOR = 'editor',
+  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',
+}
+
+export enum Permission {
+  // Permisos para contenido
+  READ_CONTENT = 'read:content',
+  CREATE_CONTENT = 'create:content',
+  UPDATE_CONTENT = 'update:content',
+  DELETE_CONTENT = 'delete:content',
+  PUBLISH_CONTENT = 'publish:content',
+  
+  // Permisos para usuarios
+  READ_USERS = 'read:users',
+  CREATE_USERS = 'create:users',
+  UPDATE_USERS = 'update:users',
+  DELETE_USERS = 'delete:users',
+  
+  // Permisos para configuración
+  READ_SETTINGS = 'read:settings',
+  UPDATE_SETTINGS = 'update:settings',
+  
+  // Permisos para analytics
+  READ_ANALYTICS = 'read:analytics',
+}
+
+// Mapeo de roles a permisos
+export const rolePermissions: Record<UserRole, Permission[]> = {
+  [UserRole.GUEST]: [
+    Permission.READ_CONTENT,
+  ],
+  [UserRole.USER]: [
+    Permission.READ_CONTENT,
+  ],
+  [UserRole.EDITOR]: [
+    Permission.READ_CONTENT,
+    Permission.CREATE_CONTENT,
+    Permission.UPDATE_CONTENT,
+    Permission.DELETE_CONTENT,
+    Permission.READ_ANALYTICS,
+  ],
+  [UserRole.ADMIN]: [
+    Permission.READ_CONTENT,
+    Permission.CREATE_CONTENT,
+    Permission.UPDATE_CONTENT,
+    Permission.DELETE_CONTENT,
+    Permission.PUBLISH_CONTENT,
+    Permission.READ_USERS,
+    Permission.CREATE_USERS,
+    Permission.UPDATE_USERS,
+    Permission.READ_SETTINGS,
+    Permission.UPDATE_SETTINGS,
+    Permission.READ_ANALYTICS,
+  ],
+  [UserRole.SUPER_ADMIN]: [
+    Permission.READ_CONTENT,
+    Permission.CREATE_CONTENT,
+    Permission.UPDATE_CONTENT,
+    Permission.DELETE_CONTENT,
+    Permission.PUBLISH_CONTENT,
+    Permission.READ_USERS,
+    Permission.CREATE_USERS,
+    Permission.UPDATE_USERS,
+    Permission.DELETE_USERS,
+    Permission.READ_SETTINGS,
+    Permission.UPDATE_SETTINGS,
+    Permission.READ_ANALYTICS,
+  ],
+};
+```
+
+### 2. Funciones de Verificación de Permisos
+
+```typescript
+// lib/auth/authorization.ts
+import { Permission, UserRole, rolePermissions } from './roles';
+
+interface User {
+  id: string;
+  role: UserRole;
+  permissions?: Permission[]; // Permisos adicionales específicos del usuario
+}
+
+// Verificar si un usuario tiene un rol específico
+export function hasRole(user: User, requiredRole: UserRole): boolean {
+  const roleHierarchy = Object.values(UserRole);
+  const userRoleIndex = roleHierarchy.indexOf(user.role);
+  const requiredRoleIndex = roleHierarchy.indexOf(requiredRole);
+  
+  // Un rol superior incluye los permisos de roles inferiores
+  return userRoleIndex >= requiredRoleIndex;
+}
+
+// Verificar si un usuario tiene un permiso específico
+export function hasPermission(user: User, requiredPermission: Permission): boolean {
+  // Obtener permisos basados en el rol
+  const roleBasedPermissions = rolePermissions[user.role] || [];
+  
+  // Combinar con permisos específicos del usuario si existen
+  const userPermissions = user.permissions || [];
+  const allPermissions = [...roleBasedPermissions, ...userPermissions];
+  
+  return allPermissions.includes(requiredPermission);
+}
+
+// Verificar múltiples permisos (necesita todos)
+export function hasAllPermissions(user: User, requiredPermissions: Permission[]): boolean {
+  return requiredPermissions.every(permission => hasPermission(user, permission));
+}
+
+// Verificar si tiene al menos uno de los permisos
+export function hasAnyPermission(user: User, requiredPermissions: Permission[]): boolean {
+  return requiredPermissions.some(permission => hasPermission(user, permission));
+}
+
+// Verificar acceso a recursos específicos con verificación de propiedad
+export function canAccessResource(
+  user: User, 
+  resourceOwnerId: string, 
+  permission: Permission
+): boolean {
+  // El propietario siempre puede acceder a sus propios recursos
+  if (user.id === resourceOwnerId) {
+    return true;
+  }
+  
+  // Para no propietarios, verificar permisos
+  return hasPermission(user, permission);
+}
+```
+
+---
+
+## 🛡️ Implementación en API y Rutas
+
+### 1. Middleware de Autorización para API
+
+```typescript
+// middleware/authorization.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Permission } from '@/lib/auth/roles';
+import { hasPermission } from '@/lib/auth/authorization';
+import { verifyToken } from '@/lib/auth/jwt';
+
+// Middleware para verificar permisos en rutas API
+export function createPermissionMiddleware(requiredPermission: Permission) {
+  return async function(request: NextRequest) {
+    // Extraer token del header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Autenticación requerida' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const token = authHeader.split(' ')[1];
+    const { valid, payload } = verifyToken(token);
+    
+    if (!valid || !payload) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Token inválido' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Obtener información del usuario desde el token
+    const user = {
+      id: payload.userId,
+      role: payload.role,
+      permissions: payload.permissions,
+    };
+    
+    // Verificar si el usuario tiene el permiso requerido
+    if (!hasPermission(user, requiredPermission)) {
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Acceso denegado', 
+          requiredPermission 
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Continuar si tiene permisos
+    return NextResponse.next();
+  };
+}
+
+// Middleware para verificar roles
+export function createRoleMiddleware(minimumRole: string) {
+  return async function(request: NextRequest) {
+    // Obtener token y verificar usuario similar al middleware anterior
+    // ...
+    
+    // Verificar si el usuario tiene el rol mínimo requerido
+    const roleHierarchy = ['guest', 'user', 'editor', 'admin', 'super_admin'];
+    const userRoleIndex = roleHierarchy.indexOf(user.role);
+    const requiredRoleIndex = roleHierarchy.indexOf(minimumRole);
+    
+    if (userRoleIndex < requiredRoleIndex) {
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Acceso denegado', 
+          requiredRole: minimumRole 
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    return NextResponse.next();
+  };
+}
+```
+
+### 2. Protección de Rutas API con Permisos
+
+```typescript
+// app/api/articles/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Permission } from '@/lib/auth/roles';
+import { createPermissionMiddleware } from '@/middleware/authorization';
+
+// Middleware para verificar permisos específicos
+const requireReadContent = createPermissionMiddleware(Permission.READ_CONTENT);
+const requireCreateContent = createPermissionMiddleware(Permission.CREATE_CONTENT);
+const requireUpdateContent = createPermissionMiddleware(Permission.UPDATE_CONTENT);
+const requireDeleteContent = createPermissionMiddleware(Permission.DELETE_CONTENT);
+
+// GET - Obtener artículos (requiere permiso de lectura)
+export async function GET(request: NextRequest) {
+  // Aplicar middleware de autorización
+  const authResponse = await requireReadContent(request);
+  if (authResponse.status !== 200) {
+    return authResponse;
+  }
+  
+  // Continuar con la lógica del endpoint si tiene permiso
+  // ...
+  
+  return NextResponse.json({ articles: [] });
+}
+
+// POST - Crear artículo (requiere permiso de creación)
+export async function POST(request: NextRequest) {
+  const authResponse = await requireCreateContent(request);
+  if (authResponse.status !== 200) {
+    return authResponse;
+  }
+  
+  // Lógica para crear artículo
+  // ...
+  
+  return NextResponse.json({ success: true }, { status: 201 });
+}
+
+// PUT - Actualizar artículo (requiere permiso de actualización)
+export async function PUT(request: NextRequest) {
+  const authResponse = await requireUpdateContent(request);
+  if (authResponse.status !== 200) {
+    return authResponse;
+  }
+  
+  // Lógica para actualizar artículo
+  // ...
+  
+  return NextResponse.json({ success: true });
+}
+
+// DELETE - Eliminar artículo (requiere permiso de eliminación)
+export async function DELETE(request: NextRequest) {
+  const authResponse = await requireDeleteContent(request);
+  if (authResponse.status !== 200) {
+    return authResponse;
+  }
+  
+  // Lógica para eliminar artículo
+  // ...
+  
+  return NextResponse.json({ success: true });
+}
+```
+
+---
+
+## 🔒 Protección de Rutas en el Frontend
+
+### 1. Componente de Protección de Rutas
+
+```tsx
+// components/auth/ProtectedRoute.tsx
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { Permission, UserRole, rolePermissions } from '@/lib/auth/roles';
+import { hasPermission, hasRole } from '@/lib/auth/authorization';
+
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+  requiredPermission?: Permission;
+  requiredRole?: UserRole;
+  fallbackPath?: string;
+}
+
+export default function ProtectedRoute({
+  children,
+  requiredPermission,
+  requiredRole,
+  fallbackPath = '/auth/login',
+}: ProtectedRouteProps) {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  
+  useEffect(() => {
+    // Verificar si está cargando la sesión
+    if (status === 'loading') {
+      return;
+    }
+    
+    // Si no hay sesión, redirigir al login
+    if (!session) {
+      router.push(`${fallbackPath}?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    
+    const user = {
+      id: session.user.id,
+      role: session.user.role as UserRole,
+      permissions: session.user.permissions as Permission[],
+    };
+    
+    // Verificar rol si es requerido
+    if (requiredRole && !hasRole(user, requiredRole)) {
+      router.push('/unauthorized');
+      return;
+    }
+    
+    // Verificar permiso si es requerido
+    if (requiredPermission && !hasPermission(user, requiredPermission)) {
+      router.push('/unauthorized');
+      return;
+    }
+  }, [session, status, requiredPermission, requiredRole, router, fallbackPath]);
+  
+  // Mostrar pantalla de carga mientras verifica
+  if (status === 'loading') {
+    return <div>Cargando...</div>;
+  }
+  
+  // Si no hay sesión, no renderizar nada (redirigirá en el useEffect)
+  if (!session) {
+    return null;
+  }
+  
+  // Renderizar el contenido protegido
+  return <>{children}</>;
+}
+```
+
+### 2. HOC para Protección de Componentes
+
+```tsx
+// components/auth/withPermission.tsx
+import { Permission, UserRole } from '@/lib/auth/roles';
+import ProtectedRoute from './ProtectedRoute';
+
+// HOC para proteger componentes con permiso requerido
+export function withPermission(
+  Component: React.ComponentType,
+  permission: Permission,
+  fallbackPath?: string
+) {
+  return function ProtectedComponent(props: any) {
+    return (
+      <ProtectedRoute requiredPermission={permission} fallbackPath={fallbackPath}>
+        <Component {...props} />
+      </ProtectedRoute>
+    );
+  };
+}
+
+// HOC para proteger componentes con rol requerido
+export function withRole(
+  Component: React.ComponentType,
+  role: UserRole,
+  fallbackPath?: string
+) {
+  return function ProtectedComponent(props: any) {
+    return (
+      <ProtectedRoute requiredRole={role} fallbackPath={fallbackPath}>
+        <Component {...props} />
+      </ProtectedRoute>
+    );
+  };
+}
+```
+
+### 3. Uso en Páginas
+
+```tsx
+// app/admin/dashboard/page.tsx
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import AdminDashboard from '@/components/admin/Dashboard';
+import { UserRole } from '@/lib/auth/roles';
+
+export default function AdminDashboardPage() {
+  return (
+    <ProtectedRoute requiredRole={UserRole.ADMIN}>
+      <AdminDashboard />
+    </ProtectedRoute>
+  );
+}
+
+// app/content/edit/[id]/page.tsx
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import ContentEditor from '@/components/content/Editor';
+import { Permission } from '@/lib/auth/roles';
+
+export default function EditContentPage({ params }: { params: { id: string } }) {
+  return (
+    <ProtectedRoute requiredPermission={Permission.UPDATE_CONTENT}>
+      <ContentEditor id={params.id} />
+    </ProtectedRoute>
+  );
+}
+```
+
+---
+
+## 🔄 Manejo de Acceso Condicional en UI
+
+### 1. Hook personalizado para verificación de permisos
+
+```tsx
+// hooks/useAuthorization.ts
+'use client';
+
+import { useSession } from 'next-auth/react';
+import { Permission, UserRole } from '@/lib/auth/roles';
+import { hasPermission, hasRole, hasAllPermissions, hasAnyPermission } from '@/lib/auth/authorization';
+
+export function useAuthorization() {
+  const { data: session } = useSession();
+  
+  const user = session?.user ? {
+    id: session.user.id,
+    role: session.user.role as UserRole,
+    permissions: session.user.permissions as Permission[],
+  } : null;
+  
+  return {
+    // Verificar si el usuario está autenticado
+    isAuthenticated: !!session,
+    
+    // Verificar si tiene un rol específico
+    hasRole: (role: UserRole) => user ? hasRole(user, role) : false,
+    
+    // Verificar si tiene un permiso específico
+    hasPermission: (permission: Permission) => user ? hasPermission(user, permission) : false,
+    
+    // Verificar si tiene todos los permisos especificados
+    hasAllPermissions: (permissions: Permission[]) => user ? hasAllPermissions(user, permissions) : false,
+    
+    // Verificar si tiene al menos uno de los permisos especificados
+    hasAnyPermission: (permissions: Permission[]) => user ? hasAnyPermission(user, permissions) : false,
+    
+    // Verificar si puede acceder a un recurso específico
+    canAccessResource: (resourceOwnerId: string, permission: Permission) => {
+      if (!user) return false;
+      
+      // Si es el propietario, permitir acceso
+      if (user.id === resourceOwnerId) {
+        return true;
+      }
+      
+      // Si no es el propietario, verificar permiso
+      return hasPermission(user, permission);
+    },
+    
+    // Obtener el rol del usuario
+    userRole: user?.role || null,
+  };
+}
+```
+
+### 2. Componente para renderizado condicional basado en permisos
+
+```tsx
+// components/auth/PermissionGate.tsx
+'use client';
+
+import { ReactNode } from 'react';
+import { useAuthorization } from '@/hooks/useAuthorization';
+import { Permission, UserRole } from '@/lib/auth/roles';
+
+interface PermissionGateProps {
+  children: ReactNode;
+  permission?: Permission;
+  permissions?: Permission[];
+  requireAll?: boolean;
+  role?: UserRole;
+  fallback?: ReactNode;
+}
+
+export default function PermissionGate({
+  children,
+  permission,
+  permissions = [],
+  requireAll = false,
+  role,
+  fallback = null,
+}: PermissionGateProps) {
+  const auth = useAuthorization();
+  
+  if (!auth.isAuthenticated) {
+    return fallback;
+  }
+  
+  // Verificar rol si se especifica
+  if (role && !auth.hasRole(role)) {
+    return fallback;
+  }
+  
+  // Verificar permiso único
+  if (permission && !auth.hasPermission(permission)) {
+    return fallback;
+  }
+  
+  // Verificar múltiples permisos
+  if (permissions.length > 0) {
+    const hasAccess = requireAll
+      ? auth.hasAllPermissions(permissions)
+      : auth.hasAnyPermission(permissions);
+    
+    if (!hasAccess) {
+      return fallback;
+    }
+  }
+  
+  // Si pasa todas las verificaciones, mostrar el contenido
+  return <>{children}</>;
+}
+```
+
+### 3. Uso en componentes de UI
+
+```tsx
+// components/layout/AdminSidebar.tsx
+import Link from 'next/link';
+import PermissionGate from '@/components/auth/PermissionGate';
+import { Permission, UserRole } from '@/lib/auth/roles';
+
+export default function AdminSidebar() {
+  return (
+    <div className="sidebar">
+      <h3>Panel de Administración</h3>
+      
+      <nav>
+        <ul>
+          <li><Link href="/admin/dashboard">Dashboard</Link></li>
+          
+          <PermissionGate permission={Permission.READ_CONTENT}>
+            <li><Link href="/admin/content">Contenido</Link></li>
+          </PermissionGate>
+          
+          <PermissionGate permission={Permission.READ_USERS}>
+            <li><Link href="/admin/users">Usuarios</Link></li>
+          </PermissionGate>
+          
+          <PermissionGate permission={Permission.READ_SETTINGS}>
+            <li><Link href="/admin/settings">Configuración</Link></li>
+          </PermissionGate>
+          
+          <PermissionGate permission={Permission.READ_ANALYTICS}>
+            <li><Link href="/admin/analytics">Analíticas</Link></li>
+          </PermissionGate>
+          
+          <PermissionGate role={UserRole.SUPER_ADMIN}>
+            <li><Link href="/admin/system">Sistema</Link></li>
+          </PermissionGate>
+        </ul>
+      </nav>
+    </div>
+  );
+}
+
+// components/content/ArticleActions.tsx
+import { useState } from 'react';
+import { useAuthorization } from '@/hooks/useAuthorization';
+import { Permission } from '@/lib/auth/roles';
+import { Button } from '@/components/ui/Button';
+
+interface ArticleActionsProps {
+  articleId: string;
+  authorId: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  onPublish: () => void;
+}
+
+export default function ArticleActions({
+  articleId,
+  authorId,
+  onEdit,
+  onDelete,
+  onPublish,
+}: ArticleActionsProps) {
+  const auth = useAuthorization();
+  
+  return (
+    <div className="article-actions">
+      {/* Editar - disponible para el autor o usuarios con permiso de edición */}
+      {auth.canAccessResource(authorId, Permission.UPDATE_CONTENT) && (
+        <Button onClick={onEdit}>Editar</Button>
+      )}
+      
+      {/* Eliminar - disponible para el autor o usuarios con permiso de eliminación */}
+      {auth.canAccessResource(authorId, Permission.DELETE_CONTENT) && (
+        <Button variant="danger" onClick={onDelete}>Eliminar</Button>
+      )}
+      
+      {/* Publicar - solo disponible para usuarios con permiso de publicación */}
+      {auth.hasPermission(Permission.PUBLISH_CONTENT) && (
+        <Button variant="success" onClick={onPublish}>Publicar</Button>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🔍 Auditoría y Registro de Acciones
+
+```typescript
+// lib/audit/logger.ts
+interface AuditLogEntry {
+  userId: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  success: boolean;
+  details?: Record<string, any>;
+  timestamp: Date;
+  ip?: string;
+  userAgent?: string;
+}
+
+export async function logAuditEvent(entry: Omit<AuditLogEntry, 'timestamp'>) {
+  const auditLog: AuditLogEntry = {
+    ...entry,
+    timestamp: new Date(),
+  };
+  
+  // Guardar en base de datos
+  // await prisma.auditLog.create({ data: auditLog });
+  
+  // También podría enviar a un servicio externo
+  // await sendToLogService(auditLog);
+  
+  // Log en consola para desarrollo
+  console.log('[AUDIT]', auditLog);
+  
+  return auditLog;
+}
+
+// Middleware para registrar acceso a recursos protegidos
+export function createAuditMiddleware(resourceType: string) {
+  return async function(req: NextRequest, res: NextResponse) {
+    const user = req.headers.get('x-user-id') || 'anonymous';
+    const action = req.method || 'UNKNOWN';
+    const resourceId = req.url.split('/').pop() || undefined;
+    const ip = req.headers.get('x-forwarded-for') || req.ip;
+    const userAgent = req.headers.get('user-agent');
+    
+    // Registrar el intento
+    await logAuditEvent({
+      userId: user,
+      action,
+      resource: resourceType,
+      resourceId,
+      success: res.status < 400, // Éxito si no es un error
+      details: {
+        status: res.status,
+        url: req.url,
+      },
+      ip,
+      userAgent,
+    });
+    
+    return res;
+  };
+}
+```
+
+### 2. Configuración para escaneo de seguridad
+
+```yaml
+# .github/workflows/security-scan.yml
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Ejecución semanal (domingo a medianoche)
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: npm audit --production
+      
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+      
+      - name: Run OWASP ZAP Scan
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          target: 'https://staging.example.com'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+      
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/r2c-security-audit
+            p/react
+            p/nodejs
+          generateSarif: true
+      
+      - name: Upload scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: semgrep.sarif
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Autorización)
+
+- Implementar RBAC con jerarquía clara de roles y permisos granulares
+- Mantener separada la lógica de autenticación y autorización
+- Verificar permisos tanto en el lado del cliente como del servidor
+- Utilizar el principio de privilegio mínimo en asignación de permisos
+- Implementar verificación de propiedad para recursos específicos
+- Usar middleware de autorización en todas las rutas API protegidas
+- Emplear componentes HOC o hooks para protección en el frontend
+- Mantener un registro de auditoría para acciones sensibles
+- Implementar renderizado condicional basado en permisos del usuario
+- Ocultar elementos de UI para los que el usuario no tiene acceso
+- Evitar filtrar información de permisos/roles en respuestas públicas
+- Crear roles de sistema específicos para aplicaciones automatizadas
+- Revocar permisos automáticamente tras periodos de inactividad
+- Implementar mecanismo de delegación temporal de permisos
+- Utilizar verificación por lotes para operaciones sobre múltiples recursos
+- Capturar excepciones de autorización y responder con errores 403 apropiados
+- Realizar verificaciones de autorización antes de cualquier operación costosa
+- Evitar codificar permisos directamente en la lógica de negocio
+- Actualizar permisos en tiempo real sin requerir nuevo inicio de sesión
+- Aplicar el principio de defensa en profundidad con múltiples capas de verificación 

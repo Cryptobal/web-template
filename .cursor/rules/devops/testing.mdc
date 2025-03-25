@@ -1,0 +1,448 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: testing.mdc
+
+## 🎯 Propósito
+Establecer estándares para la implementación de pruebas unitarias, de integración y end-to-end (E2E), garantizando la calidad, estabilidad y mantenibilidad del código. Estas pruebas deben detectar fallos y regresiones tempranamente, documentar el comportamiento esperado y facilitar refactorizaciones seguras.
+
+---
+
+## 🧪 Estructura y organización
+
+### Organización de archivos
+```
+/src
+  /components
+    /Button
+      Button.tsx
+      Button.test.tsx  # Pruebas unitarias
+      Button.e2e.ts    # Pruebas E2E (opcional)
+  /hooks
+    /useCounter
+      useCounter.ts
+      useCounter.test.ts
+  /utils
+    /formatters
+      formatters.ts
+      formatters.test.ts
+```
+
+### Convenciones de nombrado
+- Archivos de prueba unitaria: `*.test.tsx` o `*.test.ts`
+- Archivos de prueba E2E: `*.e2e.ts`
+- Archivos de mocks: `__mocks__/*.ts`
+- Archivos de fixtures: `__fixtures__/*.ts`
+
+---
+
+## 🛠️ Configuración base (Jest + React Testing Library)
+
+```javascript
+// jest.config.js
+module.exports = {
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+  },
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/.next/',
+  ],
+  transform: {
+    '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', { presets: ['next/babel'] }],
+  },
+  collectCoverageFrom: [
+    'src/**/*.{js,jsx,ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/**/*.stories.{js,jsx,ts,tsx}',
+    '!src/pages/_app.tsx',
+    '!src/pages/_document.tsx',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
+    },
+  },
+};
+```
+
+```javascript
+// jest.setup.js
+import '@testing-library/jest-dom';
+```
+
+---
+
+## 🎯 Tipos de pruebas
+
+### 1. Pruebas unitarias
+Enfoque en componentes individuales, hooks y utilidades.
+
+```typescript
+// Button.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import Button from './Button';
+
+describe('Button component', () => {
+  it('should render correctly', () => {
+    render(<Button>Click me</Button>);
+    expect(screen.getByRole('button')).toBeInTheDocument();
+    expect(screen.getByText('Click me')).toBeInTheDocument();
+  });
+
+  it('should call onClick when clicked', () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick}>Click me</Button>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('should be disabled when disabled prop is true', () => {
+    render(<Button disabled>Click me</Button>);
+    expect(screen.getByRole('button')).toBeDisabled();
+  });
+});
+```
+
+### 2. Pruebas de integración
+Enfoque en interacciones entre componentes.
+
+```typescript
+// Form.test.tsx
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import ContactForm from './ContactForm';
+
+describe('ContactForm', () => {
+  it('should validate required fields and submit form', async () => {
+    const mockSubmit = jest.fn();
+    render(<ContactForm onSubmit={mockSubmit} />);
+    
+    // Submit sin completar campos requeridos
+    fireEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    
+    // Verificar mensajes de error
+    expect(await screen.findByText(/el nombre es requerido/i)).toBeInTheDocument();
+    
+    // Completar formulario
+    fireEvent.change(screen.getByLabelText(/nombre/i), { target: { value: 'Carlos Pérez' } });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'carlos@example.com' } });
+    fireEvent.change(screen.getByLabelText(/mensaje/i), { target: { value: 'Hola, me gustaría más información' } });
+    
+    // Enviar formulario válido
+    fireEvent.click(screen.getByRole('button', { name: /enviar/i }));
+    
+    // Verificar que se llamó a onSubmit con los datos correctos
+    await waitFor(() => {
+      expect(mockSubmit).toHaveBeenCalledWith({
+        name: 'Carlos Pérez',
+        email: 'carlos@example.com',
+        message: 'Hola, me gustaría más información',
+      });
+    });
+  });
+});
+```
+
+### 3. Pruebas E2E (Cypress/Playwright)
+
+```typescript
+// cypress/e2e/contactForm.cy.ts
+describe('Contact Form', () => {
+  it('submits a valid form', () => {
+    cy.visit('/contacto');
+    cy.intercept('POST', '/api/contact', { status: 200, body: { success: true } }).as('submitForm');
+    
+    cy.get('input[name="name"]').type('Carlos Pérez');
+    cy.get('input[name="email"]').type('carlos@example.com');
+    cy.get('textarea[name="message"]').type('Me gustaría más información');
+    
+    cy.get('button[type="submit"]').click();
+    
+    cy.wait('@submitForm').its('request.body').should('deep.equal', {
+      name: 'Carlos Pérez',
+      email: 'carlos@example.com',
+      message: 'Me gustaría más información',
+    });
+    
+    cy.contains('Mensaje enviado con éxito').should('be.visible');
+  });
+});
+```
+
+---
+
+## 🧠 Mejores prácticas
+
+### Para pruebas unitarias
+- Prueba comportamiento, no implementación
+- Usa roles y texto para seleccionar elementos (no IDs o clases)
+- Cada test debe tener un solo assert principal
+- Usa AAA (Arrange-Act-Assert) o Given-When-Then
+
+### Para pruebas de integración 
+- Enfócate en flujos de usuario, no detalles técnicos
+- Simula APIs con mocks claros
+- Prueba casos de éxito y error
+
+### Para pruebas E2E
+- Prueba solo flujos críticos de negocio
+- Evita detalles de implementación
+- Usa datos de prueba predecibles
+- Ejecuta estas pruebas en un pipeline CI
+
+---
+
+## 🚫 Anti-patrones a evitar
+
+- Pruebas frágiles que se rompen con cambios menores
+- Pruebas acopladas a la implementación
+- Pruebas con dependencias de tiempo reales (usa jest.useFakeTimers())
+- Demasiados mocks que reducen la confiabilidad
+- Tests lentos o redundantes
+
+---
+
+## 📈 Cobertura de código
+
+- Meta mínima: 70% de cobertura global
+- 100% para utilidades críticas
+- Enfóquese en cobertura de casos de uso, no sólo líneas
+- Incluir threshold en configuración para prevenir regresiones
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Crear tests para cada componente visible de la UI
+- Cada nuevo hook debe tener tests asociados
+- Los tests deben pasar antes de hacer merge a `main`
+- Usar mocks para APIs y servicios externos
+- Priorizar tests que prueben casos de uso reales
+- Ejecutar pruebas unitarias en pre-commit
+- Ejecutar E2E en el pipeline de CI 
+
+---
+
+## 🌩️ Pruebas específicas para Vercel y Cloudflare
+
+### Configuración de CI/CD en Vercel
+
+```yaml
+# .github/workflows/vercel-preview.yml
+name: Vercel Preview Deployment
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linters
+        run: npm run lint
+        
+      - name: Run tests
+        run: npm run test
+        
+      - name: Run type check
+        run: npm run type-check
+        
+  deploy-preview:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: Deploy to Vercel
+        run: vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --prod
+```
+
+### Testing de Edge Functions
+
+```typescript
+// __tests__/middleware.test.ts
+import { NextRequest, NextResponse } from 'next/server';
+import middleware from '../middleware';
+
+// Mock Next.js objects
+jest.mock('next/server', () => {
+  return {
+    NextResponse: {
+      next: jest.fn().mockImplementation(() => ({
+        headers: new Map(),
+      })),
+      redirect: jest.fn().mockImplementation((url) => ({
+        url,
+      })),
+    },
+  };
+});
+
+describe('Edge Middleware', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+  
+  it('should set cache headers for Cloudflare optimization', () => {
+    const req = {
+      headers: {
+        get: jest.fn().mockImplementation(() => 'mock-agent'),
+      },
+      url: 'https://example.com',
+    } as unknown as NextRequest;
+    
+    const response = middleware(req);
+    
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=3600, s-maxage=86400');
+    expect(response.headers.get('CDN-Cache-Control')).toBe('public, max-age=86400');
+  });
+  
+  it('should redirect malicious bots', () => {
+    const req = {
+      headers: {
+        get: jest.fn().mockImplementation(() => 'bad-bot crawler'),
+      },
+      url: 'https://example.com',
+    } as unknown as NextRequest;
+    
+    middleware(req);
+    
+    expect(NextResponse.redirect).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/bot-detected' })
+    );
+  });
+});
+```
+
+### Pruebas para Workers de Cloudflare
+
+```typescript
+// tests/cloudflare-worker.test.js
+import { unstable_dev } from 'wrangler';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
+
+describe('Cloudflare Worker Tests', () => {
+  let worker;
+
+  beforeAll(async () => {
+    worker = await unstable_dev('src/worker.js', {
+      experimental: { disableExperimentalWarning: true },
+    });
+  });
+
+  afterAll(async () => {
+    await worker.stop();
+  });
+
+  it('should return successful response', async () => {
+    const resp = await worker.fetch();
+    expect(resp.status).toBe(200);
+    
+    const text = await resp.text();
+    expect(text).toContain('Respuesta del worker');
+  });
+  
+  it('should handle API requests correctly', async () => {
+    const resp = await worker.fetch('/api/data');
+    expect(resp.status).toBe(200);
+    
+    const data = await resp.json();
+    expect(data).toHaveProperty('success', true);
+  });
+});
+```
+
+### Testing de velocidad y rendimiento
+
+```typescript
+// tests/performance.spec.ts (Playwright)
+import { test, expect } from '@playwright/test';
+
+test.describe('Performance testing', () => {
+  test('Core Web Vitals - Homepage', async ({ page }) => {
+    // Navegar a la página
+    await page.goto('https://tusitio.com');
+    
+    // Recopilar métricas de rendimiento
+    const performanceTimingJSON = await page.evaluate(() => JSON.stringify(performance.timing));
+    const performanceTiming = JSON.parse(performanceTimingJSON);
+    
+    // Calcular LCP (aproximado)
+    const loadTime = performanceTiming.loadEventEnd - performanceTiming.navigationStart;
+    console.log(`Load time: ${loadTime}ms`);
+    
+    // Verificar tiempos aceptables
+    expect(loadTime).toBeLessThan(2500); // Menos de 2.5 segundos
+    
+    // Capturar Lighthouse metrics (requiere configuración adicional)
+    // ...
+  });
+});
+```
+
+### Verificación de Headers y Caché
+
+```typescript
+// tests/cloudflare-headers.spec.ts
+import { test, expect } from '@playwright/test';
+
+test.describe('Cloudflare Headers and Cache', () => {
+  test('should have proper Cloudflare headers', async ({ request }) => {
+    const response = await request.get('https://tusitio.com');
+    
+    // Verificar headers específicos de Cloudflare
+    expect(response.headers()['cf-cache-status']).toBeDefined();
+    expect(response.headers()['cf-ray']).toBeDefined();
+    
+    // Verificar headers de caché
+    const cacheControl = response.headers()['cache-control'];
+    expect(cacheControl).toContain('max-age=');
+  });
+  
+  test('static assets should have proper cache headers', async ({ request }) => {
+    const response = await request.get('https://tusitio.com/static/image.jpg');
+    
+    // Verificar cache para recursos estáticos
+    const cacheControl = response.headers()['cache-control'];
+    expect(cacheControl).toContain('max-age=31536000'); // 1 año
+    expect(cacheControl).toContain('immutable');
+  });
+});
+```
+
+---
+
+## 🛠️ Reglas adicionales para Vercel y Cloudflare
+
+- Implementar tests de integración específicos para Edge Functions
+- Configurar pruebas de rendimiento con métricas de Core Web Vitals
+- Verificar headers de caché y optimización de Cloudflare
+- Probar funcionamiento de Workers de Cloudflare antes del despliegue
+- Ejecutar tests de carga en entornos de Preview de Vercel
+- Implementar monitoreo sintético con Cloudflare Healthchecks
+- Verificar que las políticas de CORS y seguridad sean consistentes
+- Testear redirecciones y reglas configuradas en _middleware
+- Validar funcionamiento de robots.txt y sitemap.xml en cada despliegue 

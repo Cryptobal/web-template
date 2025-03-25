@@ -1,0 +1,88 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: Uso de Imágenes con CDN Cloudflare
+
+## 🎯 Objetivo
+Establecer la forma correcta y optimizada de cargar imágenes en el sitio web de Gard Security. Las imágenes deben servirse desde una CDN externa (Cloudflare Images) para asegurar rendimiento, SEO y escalabilidad.
+
+---
+
+## ☁️ Servidor de Imágenes
+
+Todas las imágenes deben alojarse en: https://cdn.tusitio.com/
+
+Este dominio debe estar configurado en Cloudflare R2 + Cloudflare Images y ser accesible públicamente.
+
+---
+
+## 🧠 Reglas para el uso de imágenes
+
+### ✅ Componente obligatorio
+Usar siempre el componente de Next.js optimizado:
+
+```tsx
+import Image from 'next/image'
+
+<Image
+  src="https://cdn.tusitio.com/ejemplo.jpg"
+  alt="Descripción de la imagen"
+  width={600}
+  height={400}
+  className="rounded-xl"
+/>
+
+🔐 Alt y dimensiones
+	•	alt obligatorio (SEO, accesibilidad)
+	•	width y height deben estar definidos
+	•	Evitar layout='fill' si no se controla el contenedor
+
+🚫 Nunca usar
+	•	<img src="..."> sin pasar por Next.js <Image />
+	•	Imágenes desde dominios externos no autorizados (WhatsApp, Facebook, Google Drive, etc.)
+
+⸻
+
+⚙️ Configuración en next.config.js
+
+module.exports = {
+  images: {
+    omains: ['cdn.tusitio.com'],
+    formats: ['image/webp'],
+  },
+}
+
+🧾 Organización sugerida del CDN
+	•	/logos/
+	•	/clientes/
+	•	/blog/
+	•	/proyectos/
+	•	/equipo/
+	•	/industrias/
+	•	/tecnologia/
+
+⸻
+
+🔍 Buenas prácticas SEO
+	•	alt debe incluir palabras clave relevantes
+	•	loading="lazy" se activa automáticamente
+	•	No usar imágenes con texto incrustado (usar texto HTML visible)
+
+⸻
+
+📈 Beneficios de usar Cloudflare Images
+	•	Sirve imágenes desde edge CDN global
+	•	Optimiza automáticamente (WebP, resize, compresión)
+	•	Reducción de tamaño y tiempo de carga
+	•	Mejora Core Web Vitals (LCP, CLS)
+	•	Compatible 100% con Next.js y Vercel
+
+⸻
+
+🛠️ Regla Cursor
+	•	Esta regla aplica a todas las imágenes del frontend
+	•	El uso de <Image /> es obligatorio
+	•	Las rutas deben apuntar al dominio cdn.gardsecurity.cl
+	•	Cualquier imagen no alojada en Cloudflare debe ser migrada

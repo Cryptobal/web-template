@@ -1,0 +1,74 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: Inyección de Webchat con Delay (`webchat-injection.mdc`)
+
+## 🎯 Propósito
+Inyectar un chatbot web de forma diferida (ej. 5 segundos) en todo el sitio, con el objetivo de mejorar la conversión sin afectar el rendimiento inicial ni la experiencia de navegación.
+
+---
+
+## ⏱️ Comportamiento esperado
+
+- El chatbot debe inyectarse **solo una vez**, después de 5 segundos desde la carga de la página.
+- El script debe cargarse dinámicamente dentro del `<body>`, **solo en producción**.
+- Debe prevenirse la doble carga al navegar dentro de una SPA (Single Page Application).
+
+---
+
+## 📍 Ubicación sugerida
+
+Insertar el código dentro del **layout principal** del sitio, idealmente en:
+
+- `app/layout.tsx` (Next.js App Router)
+- `pages/_app.tsx` o `pages/_document.tsx` (Next.js Pages Router)
+- `App.jsx` o `index.html` en otros frameworks
+
+---
+
+## 📜 Código genérico a insertar
+
+```html
+<!-- Webchat Bot - Activación diferida -->
+<script>
+  setTimeout(function () {
+    if (window.__webchat_loaded__) return
+    window.__webchat_loaded__ = true
+
+    const s1 = document.createElement('script')
+    s1.src = "https://cdn.webchatprovider.com/inject.js"
+    document.body.appendChild(s1)
+
+    const s2 = document.createElement('script')
+    s2.src = "https://cdn.webchatprovider.com/your-bot-id.js"
+    document.body.appendChild(s2)
+  }, 5000)
+</script>
+
+🔄 Reemplazar las URLs con las proporcionadas por tu proveedor de chatbot (ej. Botpress, Tidio, Crisp, Intercom, etc.)
+
+⸻
+
+🔒 Consideraciones de seguridad y rendimiento
+	•	Evitar doble carga: proteger con window.__webchat_loaded__
+	•	Evitar ejecución en desarrollo: usar process.env.NODE_ENV === 'production'
+	•	Evitar bloqueo del hilo principal: insertar con setTimeout
+	•	Ubicación del script: siempre al final del <body>
+
+⸻
+
+🧠 Personalizaciones posibles
+	•	Cambiar el setTimeout a otro valor (ej: 8000 ms)
+	•	Usar IntersectionObserver para inyectar el bot solo cuando el usuario interactúe
+	•	Añadir tracking al evento de activación del bot (GA4, Meta Pixel)
+
+⸻
+
+🛠️ Regla Cursor
+	•	Esta regla aplica al layout global (layout.tsx, App.jsx, document.tsx)
+	•	El código solo debe ejecutarse en producción
+	•	Evitar múltiples instancias del script
+	•	Debe ser compatible con navegación en SPA
+	•	Si se usa Next.js, envolver en useEffect() con chequeo de entorno

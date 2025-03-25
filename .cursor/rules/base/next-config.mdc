@@ -1,0 +1,378 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: next-config.mdc
+
+## 🎯 Propósito
+Establecer una configuración óptima y estandarizada para Next.js, habilitando todas las características avanzadas necesarias para un proyecto profesional, incluyendo soporte para múltiples entornos, optimizaciones de rendimiento y compatibilidad con herramientas externas.
+
+---
+
+## ⚙️ Configuración Base
+
+```javascript
+// next.config.js
+const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
+  images: {
+    domains: ['cdn.tusitio.com', 'images.unsplash.com', 'res.cloudinary.com'],
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+  },
+  i18n: {
+    locales: ['es', 'en'],
+    defaultLocale: 'es',
+    localeDetection: true,
+  },
+  experimental: {
+    appDir: true,
+    serverComponentsExternalPackages: [],
+    instrumentationHook: true,
+  },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+    styledComponents: false,
+  },
+  poweredByHeader: false,
+  modularizeImports: {
+    '@mui/icons-material': {
+      transform: '@mui/icons-material/{{member}}',
+    },
+    '@mui/material': {
+      transform: '@mui/material/{{member}}',
+    },
+    'lodash': {
+      transform: 'lodash/{{member}}',
+    },
+  },
+};
+
+// Headers de seguridad y caché
+const securityHeaders = [
+  {
+    key: 'X-DNS-Prefetch-Control',
+    value: 'on',
+  },
+  {
+    key: 'X-XSS-Protection',
+    value: '1; mode=block',
+  },
+  {
+    key: 'X-Frame-Options',
+    value: 'SAMEORIGIN',
+  },
+  {
+    key: 'X-Content-Type-Options',
+    value: 'nosniff',
+  },
+  {
+    key: 'Referrer-Policy',
+    value: 'strict-origin-when-cross-origin',
+  },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=()',
+  },
+];
+
+// Configuración de redirecciones
+const redirects = async () => {
+  return [
+    {
+      source: '/old-blog/:slug',
+      destination: '/blog/:slug',
+      permanent: true,
+    },
+    // Otras redirecciones específicas del proyecto
+  ];
+};
+
+// Configuración de headers
+const headers = async () => {
+  return [
+    {
+      source: '/:path*',
+      headers: securityHeaders,
+    },
+    {
+      source: '/fonts/:path*',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=31536000, immutable',
+        },
+      ],
+    },
+    {
+      source: '/images/:path*',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=86400, stale-while-revalidate=31536000',
+        },
+      ],
+    },
+  ];
+};
+
+// Configuración final completa
+module.exports = {
+  ...nextConfig,
+  async redirects() {
+    return redirects();
+  },
+  async headers() {
+    return headers();
+  },
+};
+```
+
+---
+
+## 🔄 Integraciones con plugins
+
+### 1. Bundle Analyzer (opcional)
+```javascript
+// Módulo para analizar tamaño del bundle
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
+module.exports = withBundleAnalyzer({
+  // Resto de la configuración
+});
+```
+
+### 2. Soporte para SVG como componentes
+```javascript
+// Módulo para usar SVG como componentes
+const withSvgr = require('next-svgr');
+
+module.exports = withSvgr({
+  svgrOptions: {
+    svgoConfig: {
+      plugins: [
+        {
+          name: 'preset-default',
+          params: {
+            overrides: {
+              removeViewBox: false,
+            },
+          },
+        },
+      ],
+    },
+  },
+  // Resto de la configuración
+});
+```
+
+---
+
+## 🔧 Configuración por entornos
+
+```javascript
+// utils/env-config.js
+const getEnvironmentConfig = () => {
+  switch (process.env.APP_ENV) {
+    case 'development':
+      return {
+        // Configuración para desarrollo
+        enableMocks: true,
+        debugMode: true,
+      };
+    case 'staging':
+      return {
+        // Configuración para staging
+        enableMocks: false,
+        debugMode: true,
+      };
+    case 'production':
+    default:
+      return {
+        // Configuración para producción
+        enableMocks: false,
+        debugMode: false,
+      };
+  }
+};
+
+module.exports = getEnvironmentConfig();
+```
+
+---
+
+## 🛠️ Scripts NPM estandarizados
+
+```json
+// package.json (sección scripts)
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "analyze": "ANALYZE=true next build",
+    "postbuild": "next-sitemap",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "cypress": "cypress open",
+    "cypress:headless": "cypress run",
+    "prepare": "husky install",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  }
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Utilizar la configuración exacta de `next.config.js` como base para todos los proyectos
+- Personalizar dominios de imágenes según CDN elegido para el proyecto
+- Habilitar i18n solo si el proyecto lo requiere, manteniendo la estructura base
+- Personalizar redirecciones específicas para cada proyecto
+- La sección experimental debe adaptarse a la versión actual de Next.js
+- Mantener todos los headers de seguridad y cache por defecto
+- Los plugins opcionales (bundle analyzer, SVGR) deben activarse según necesidades 
+
+---
+
+## 🌩️ Optimización para Vercel y Cloudflare
+
+### Configuración específica para Vercel
+
+```javascript
+// next.config.js con optimizaciones para Vercel
+const nextConfig = {
+  // Configuración base mantenida...
+  
+  // Optimizaciones para Vercel Edge Network
+  output: 'standalone', // Mejor soporte para contenedores y despliegues
+  
+  // Aprovechamiento de Edge Functions
+  experimental: {
+    runtime: 'edge',
+    serverComponents: true,
+    concurrentFeatures: true,
+  },
+  
+  // Optimización específica de imágenes para Vercel
+  images: {
+    domains: ['cdn.tusitio.com', 'images.unsplash.com', 'res.cloudinary.com'],
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    // Loader específico para Vercel (por defecto)
+    loader: 'default',
+    // Para usar Cloudflare Images
+    // loader: 'custom',
+    // loaderFile: './utils/cloudflare-image-loader.js',
+  },
+  
+  // Otras optimizaciones Vercel-específicas...
+};
+```
+
+### Configuración para Cloudflare
+
+```javascript
+// Loader personalizado para Cloudflare Images (si se usa)
+// utils/cloudflare-image-loader.js
+export default function cloudflareLoader({ src, width, quality }) {
+  const params = [`width=${width}`];
+  if (quality) {
+    params.push(`quality=${quality}`);
+  }
+  return `https://imagedelivery.net/tu-account-hash/${src}/${params.join(',')}`;
+}
+
+// Headers específicos para Cloudflare
+const cloudflareHeaders = [
+  {
+    source: '/:path*',
+    headers: [
+      {
+        key: 'Cache-Control',
+        value: 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=31536000',
+      },
+      // Headers recomendados para Cloudflare
+      {
+        key: 'CDN-Cache-Control',
+        value: 'public, max-age=86400',
+      },
+      {
+        key: 'Cloudflare-CDN-Cache-Control',
+        value: 'max-age=86400',
+      },
+    ],
+  },
+  // Configuración específica para recursos estáticos
+  {
+    source: '/static/:path*',
+    headers: [
+      {
+        key: 'Cache-Control',
+        value: 'public, max-age=31536000, immutable',
+      },
+    ],
+  },
+];
+```
+
+### Middlewares para Cloudflare y Vercel
+
+```typescript
+// middleware.ts - Para Edge Functions
+import { NextResponse, NextRequest } from 'next/server';
+
+export default function middleware(req: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Añadir headers para optimización de Cloudflare
+  response.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+  response.headers.set('CDN-Cache-Control', 'public, max-age=86400');
+  
+  // Configuración de seguridad
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Opcional: Detectar y redirigir bots maliciosos
+  const userAgent = req.headers.get('user-agent') || '';
+  if (userAgent.includes('bad-bot')) {
+    return NextResponse.redirect(new URL('/bot-detected', req.url));
+  }
+  
+  return response;
+}
+
+export const config = {
+  matcher: [
+    // Aplicar el middleware a todas las rutas excepto a estáticos
+    '/((?!_next/static|favicon.ico|robots.txt).*)',
+  ],
+};
+```
+
+---
+
+## 🛠️ Reglas adicionales para Cloudflare y Vercel
+
+- Utilizar dominios personalizados conectando Vercel con Cloudflare DNS
+- Configurar el proxy de Cloudflare para todos los registros DNS (icono naranja)
+- Activar HTTPS estricto en Cloudflare (SSL/TLS > Edge Certificates)
+- Implementar Cloudflare Workers para lógica específica en el edge
+- Utilizar Vercel Edge Functions para funcionalidades regionales/geoespecíficas
+- Activar Auto Minify en Cloudflare para HTML, CSS y JavaScript
+- Habilitar Always Online y Automatic Platform Optimization en Cloudflare
+- Configurar Page Rules en Cloudflare para casos específicos de caché
+- Utilizar Workers KV para almacenamiento clave-valor en el edge
+- Implementar Zaraz de Cloudflare para gestión de scripts de terceros 

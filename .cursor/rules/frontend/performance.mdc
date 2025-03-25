@@ -1,0 +1,1179 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: performance.mdc
+
+## 🎯 Propósito
+Establecer estrategias avanzadas para optimizar el rendimiento del sitio web, centrándose específicamente en Core Web Vitals, tiempos de carga, code-splitting estratégico y otras técnicas de rendimiento que aseguren una experiencia de usuario fluida y puntuaciones altas en herramientas de análisis como PageSpeed Insights y Lighthouse.
+
+---
+
+## 🚀 Core Web Vitals
+
+### 1. Optimización de LCP (Largest Contentful Paint)
+
+El LCP mide cuánto tiempo tarda en cargarse el elemento visual más grande visible en la ventana.
+
+```tsx
+// components/ui/OptimizedImage.tsx
+'use client';
+
+import Image from 'next/image';
+import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  priority?: boolean;
+  className?: string;
+  onLoad?: () => void;
+}
+
+export function OptimizedImage({
+  src,
+  alt,
+  width,
+  height,
+  priority = false,
+  className,
+  onLoad,
+}: OptimizedImageProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Usar data-lcp-priority para marcar elementos LCP importantes
+  const isLCP = priority;
+  
+  // Efecto para reportar métricas de carga
+  useEffect(() => {
+    if (isLCP && typeof window !== 'undefined' && 'performance' in window) {
+      // Reportar a Analytics cuando se cargue un elemento LCP
+      return () => {
+        if (isLoaded) {
+          // Enviar métrica personalizada
+          window.performance.mark('lcp-loaded');
+        }
+      };
+    }
+  }, [isLCP, isLoaded]);
+  
+  return (
+    <div className={cn('relative overflow-hidden', className)}>
+      <Image
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        priority={priority}
+        loading={priority ? 'eager' : 'lazy'}
+        data-lcp={priority ? 'true' : undefined}
+        className={cn(
+          'transition-opacity duration-300',
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        )}
+        onLoad={() => {
+          setIsLoaded(true);
+          onLoad?.();
+        }}
+        quality={priority ? 90 : 75} // Mayor calidad para imágenes críticas
+      />
+      
+      {!isLoaded && (
+        <div 
+          className="absolute inset-0 bg-neutral-100 dark:bg-neutral-800 animate-pulse"
+          style={{
+            aspectRatio: `${width}/${height}`,
+          }}
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  );
+}
+```
+
+#### Estrategias para mejorar LCP:
+
+1. **Priorizar la carga de imágenes críticas:**
+```tsx
+// app/[lang]/page.tsx
+import { OptimizedImage } from '@/components/ui/OptimizedImage';
+
+export default function HomePage() {
+  return (
+    <main>
+      <section className="hero">
+        {/* Imagen hero con prioridad (LCP) */}
+        <OptimizedImage
+          src="https://cdn.tusitio.com/hero-image.webp"
+          alt="Hero image description"
+          width={1200}
+          height={600}
+          priority={true} // Marca esta imagen como crítica para LCP
+          className="w-full rounded-xl"
+        />
+      </section>
+      
+      {/* Resto del contenido */}
+    </main>
+  );
+}
+```
+
+2. **Precargar fuentes críticas:**
+```typescript
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Link',
+            value:
+              '</fonts/brand.woff2>; rel=preload; as=font; type=font/woff2; crossorigin=anonymous',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+3. **Usar `fetchPriority` para recursos críticos:**
+```tsx
+<OptimizedImage
+  src="https://cdn.tusitio.com/hero-image.webp"
+  alt="Hero image description"
+  width={1200}
+  height={600}
+  priority={true}
+  fetchPriority="high" // Aumentar prioridad de carga
+/>
+```
+
+### 2. Reducción de CLS (Cumulative Layout Shift)
+
+El CLS mide la estabilidad visual durante la carga.
+
+```tsx
+// components/layout/AspectRatioBox.tsx
+interface AspectRatioBoxProps {
+  ratio: number; // width/height
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function AspectRatioBox({
+  ratio,
+  children,
+  className,
+}: AspectRatioBoxProps) {
+  return (
+    <div
+      className={className}
+      style={{
+        position: 'relative',
+        paddingBottom: `${(1 / ratio) * 100}%`,
+        height: 0,
+        overflow: 'hidden',
+      }}
+    >
+      <div 
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+#### Estrategias para mejorar CLS:
+
+1. **Reservar espacio para imágenes:**
+```tsx
+// En componentes que cargan imágenes
+<AspectRatioBox ratio={16/9} className="mb-4">
+  <OptimizedImage
+    src="https://cdn.tusitio.com/blog/image.webp"
+    alt="Blog image"
+    width={800}
+    height={450}
+    className="object-cover"
+  />
+</AspectRatioBox>
+```
+
+2. **Prevenir cambios de layout con fuentes:**
+```tsx
+// app/layout.tsx
+import { Inter } from 'next/font/google';
+
+// Optimización de fuentes para prevenir CLS
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  fallback: ['system-ui', 'sans-serif'],
+});
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es" className={inter.className}>
+      <head>
+        {/* Font Display Swap para reducir CLS */}
+        <style>{`
+          @font-face {
+            font-family: 'CustomFont';
+            src: url('/fonts/custom.woff2') format('woff2');
+            font-display: swap;
+            font-weight: normal;
+            font-style: normal;
+          }
+        `}</style>
+      </head>
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+3. **Contenedores de altura fija para contenido dinámico:**
+```tsx
+<div 
+  className="min-h-[300px] w-full relative"
+  style={{ containIntrinsicSize: '0 300px' }}
+>
+  {/* Contenido cargado dinámicamente */}
+  {isLoaded ? <DynamicContent /> : <Skeleton />}
+</div>
+```
+
+### 3. Mejora de FID/INP (First Input Delay/Interaction to Next Paint)
+
+FID mide el tiempo desde que un usuario interactúa hasta que el navegador puede responder.
+
+```tsx
+// hooks/useOptimizedEvent.ts
+import { useCallback, useEffect, useRef } from 'react';
+
+interface UseOptimizedEventOptions {
+  debounceMs?: number;
+  passive?: boolean;
+  captureRequestIdleCallback?: boolean;
+}
+
+export function useOptimizedEvent<T extends Event>(
+  eventHandler: (e: T) => void,
+  options: UseOptimizedEventOptions = {}
+) {
+  const {
+    debounceMs = 0,
+    passive = true,
+    captureRequestIdleCallback = false,
+  } = options;
+  
+  const handlerRef = useRef(eventHandler);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Actualizar referencia al handler
+  useEffect(() => {
+    handlerRef.current = eventHandler;
+  }, [eventHandler]);
+  
+  return useCallback(
+    (e: T) => {
+      // Para eventos de scroll, resize, etc.
+      if (debounceMs > 0) {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+        
+        debounceTimerRef.current = setTimeout(() => {
+          handlerRef.current(e);
+        }, debounceMs);
+        return;
+      }
+      
+      // Para operaciones no críticas, usar requestIdleCallback
+      if (captureRequestIdleCallback && window.requestIdleCallback) {
+        window.requestIdleCallback(() => {
+          handlerRef.current(e);
+        });
+        return;
+      }
+      
+      // Ejecución normal
+      handlerRef.current(e);
+    },
+    [debounceMs, captureRequestIdleCallback]
+  );
+}
+```
+
+#### Estrategias para mejorar FID/INP:
+
+1. **Dividir tareas largas con web workers:**
+```typescript
+// utils/worker.ts
+if (typeof window !== 'undefined') {
+  const heavyComputationWorker = new Worker(
+    new URL('@/workers/computation.worker.ts', import.meta.url)
+  );
+  
+  export function runHeavyComputation(data: any): Promise<any> {
+    return new Promise((resolve) => {
+      const messageHandler = (e: MessageEvent) => {
+        heavyComputationWorker.removeEventListener('message', messageHandler);
+        resolve(e.data);
+      };
+      
+      heavyComputationWorker.addEventListener('message', messageHandler);
+      heavyComputationWorker.postMessage(data);
+    });
+  }
+}
+
+// workers/computation.worker.ts
+self.addEventListener('message', (e) => {
+  // Realizar cálculo pesado aquí
+  const result = performHeavyComputation(e.data);
+  self.postMessage(result);
+});
+
+function performHeavyComputation(data: any) {
+  // Implementación del cálculo
+  return result;
+}
+```
+
+2. **Componente que desbloquea el hilo principal:**
+```tsx
+// components/ui/IntersectionLoader.tsx
+'use client';
+
+import { useRef, useState, useEffect } from 'react';
+
+interface IntersectionLoaderProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  rootMargin?: string;
+}
+
+export function IntersectionLoader({
+  children,
+  fallback = null,
+  rootMargin = '200px',
+}: IntersectionLoaderProps) {
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsIntersecting(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin }
+    );
+    
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+    
+    return () => observer.disconnect();
+  }, [rootMargin]);
+  
+  return (
+    <div ref={ref}>
+      {isIntersecting ? children : fallback}
+    </div>
+  );
+}
+```
+
+3. **Usar `requestAnimationFrame` para animaciones:**
+```tsx
+// components/ui/SmoothCounter.tsx
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+interface SmoothCounterProps {
+  end: number;
+  duration?: number;
+}
+
+export function SmoothCounter({ end, duration = 1000 }: SmoothCounterProps) {
+  const [count, setCount] = useState(0);
+  const rafIdRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  
+  useEffect(() => {
+    const animate = (timestamp: number) => {
+      if (!startTimeRef.current) {
+        startTimeRef.current = timestamp;
+      }
+      
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      setCount(Math.floor(progress * end));
+      
+      if (progress < 1) {
+        rafIdRef.current = requestAnimationFrame(animate);
+      }
+    };
+    
+    rafIdRef.current = requestAnimationFrame(animate);
+    
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [end, duration]);
+  
+  return <span>{count}</span>;
+}
+```
+
+### 4. Reducción de TTFB (Time To First Byte)
+
+El TTFB mide el tiempo que tarda en llegar el primer byte al navegador.
+
+#### Estrategias para mejorar TTFB:
+
+1. **Configuración de caché para Vercel:**
+```typescript
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=31536000',
+          },
+        ],
+      },
+      {
+        source: '/api/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store',
+          },
+        ],
+      },
+      {
+        source: '/_next/image(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+2. **ISR para páginas dinámicas:**
+```tsx
+// app/blog/[slug]/page.tsx
+export const revalidate = 3600; // Revalidar cada hora
+
+export default async function BlogPost({ params }) {
+  // Obtener datos
+  const post = await getBlogPost(params.slug);
+  
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      {/* Contenido */}
+    </article>
+  );
+}
+```
+
+3. **Edge Runtime para funciones críticas:**
+```tsx
+// app/api/critical/route.ts
+export const runtime = 'edge';
+
+export async function GET(request: Request) {
+  // Respuesta rápida desde el edge
+  return new Response(JSON.stringify({ status: 'ok' }), {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}
+```
+
+---
+
+## 📊 Code Splitting y Bundle Optimization
+
+### 1. Carga dinámica de componentes
+
+```tsx
+// components/ui/DynamicChart.tsx
+'use client';
+
+import dynamic from 'next/dynamic';
+import { Suspense, useState } from 'react';
+
+// Cargar charts solo cuando sean necesarios
+const Chart = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
+
+function ChartSkeleton() {
+  return (
+    <div className="w-full aspect-[16/9] bg-neutral-100 dark:bg-neutral-800 animate-pulse rounded-lg" />
+  );
+}
+
+export function DynamicChart({ data }) {
+  return (
+    <Suspense fallback={<ChartSkeleton />}>
+      <Chart data={data} />
+    </Suspense>
+  );
+}
+```
+
+### 2. Route Groups para splitting de código por sección
+
+```
+app/
+├── (marketing)/        # Grupo de rutas para páginas de marketing
+│   ├── layout.tsx      # Layout específico para marketing
+│   ├── page.tsx        # Home page
+│   ├── about/          # Página "Sobre nosotros"
+│   └── services/       # Servicios
+├── (dashboard)/        # Grupo de rutas para dashboard
+│   ├── layout.tsx      # Layout específico para dashboard
+│   ├── dashboard/      # Dashboard principal
+│   └── settings/       # Configuraciones
+└── (blog)/             # Grupo de rutas para blog
+    ├── layout.tsx      # Layout específico para blog
+    ├── blog/           # Listado del blog
+    └── blog/[slug]/    # Artículo individual
+```
+
+### 3. Parallel Routes para componentes independientes
+
+```tsx
+// app/@modal/default.tsx
+export default function DefaultModal() {
+  return null;
+}
+
+// app/@modal/login/page.tsx
+export default function LoginModal() {
+  return (
+    <div className="modal">
+      {/* Contenido del modal de login */}
+    </div>
+  );
+}
+
+// app/layout.tsx
+export default function RootLayout({
+  children,
+  modal,
+}: {
+  children: React.ReactNode;
+  modal: React.ReactNode;
+}) {
+  return (
+    <html>
+      <body>
+        {children}
+        {modal}
+      </body>
+    </html>
+  );
+}
+```
+
+### 4. Loading UI y Server Components
+
+```tsx
+// app/dashboard/loading.tsx
+export default function DashboardLoading() {
+  return (
+    <div className="dashboard-skeleton">
+      <div className="header-skeleton animate-pulse h-8 w-1/3 bg-neutral-200 dark:bg-neutral-700 rounded-md mb-4" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {Array(6)
+          .fill(0)
+          .map((_, i) => (
+            <div
+              key={i}
+              className="card-skeleton animate-pulse h-40 bg-neutral-200 dark:bg-neutral-700 rounded-md"
+            />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// app/dashboard/page.tsx
+export default async function DashboardPage() {
+  // Esta operación puede ser lenta, pero el usuario verá la UI de carga
+  const dashboardData = await fetchDashboardData();
+  
+  return (
+    <div className="dashboard">
+      <h1>Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {dashboardData.cards.map((card) => (
+          <DashboardCard key={card.id} data={card} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## 🚦 Optimización de recursos y assets
+
+### 1. Configuración de imágenes optimizadas
+
+```typescript
+// next.config.js
+module.exports = {
+  images: {
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    domains: ['cdn.tusitio.com', 'images.unsplash.com'],
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 60 * 60 * 24, // 24 horas
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+  },
+};
+```
+
+### 2. Font Loading Strategy
+
+```tsx
+// app/layout.tsx
+import { Inter, Montserrat } from 'next/font/google';
+
+// Fuente para texto general
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+  preload: true,
+  fallback: ['system-ui', 'sans-serif'],
+});
+
+// Fuente para títulos
+const montserrat = Montserrat({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-montserrat',
+  preload: true,
+  fallback: ['Georgia', 'serif'],
+  // Podemos seleccionar solo los pesos que vamos a utilizar
+  weight: ['700', '800'],
+});
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es" className={`${inter.variable} ${montserrat.variable}`}>
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+### 3. CSS Optimizations
+
+```typescript
+// tailwind.config.js
+module.exports = {
+  content: [
+    './app/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+  ],
+  future: {
+    hoverOnlyWhenSupported: true, // Mejora rendimiento en dispositivos táctiles
+  },
+  theme: {
+    extend: {},
+  },
+};
+
+// postcss.config.js
+module.exports = {
+  plugins: {
+    'tailwindcss': {},
+    'autoprefixer': {},
+    ...(process.env.NODE_ENV === 'production'
+      ? {
+          '@fullhuman/postcss-purgecss': {
+            content: [
+              './app/**/*.{js,ts,jsx,tsx}',
+              './components/**/*.{js,ts,jsx,tsx}',
+            ],
+            defaultExtractor: content => content.match(/[\w-/:]+(?<!:)/g) || [],
+            safelist: ['html', 'body'],
+          },
+          'cssnano': {
+            preset: 'advanced',
+          },
+        }
+      : {}),
+  },
+};
+```
+
+---
+
+## 📱 Optimización Mobile
+
+### 1. ViewportManager para evitar problemas de 100vh en móviles
+
+```tsx
+// components/layout/ViewportManager.tsx
+'use client';
+
+import { useEffect } from 'react';
+
+export function ViewportManager() {
+  useEffect(() => {
+    // Soluciona el problema de 100vh en navegadores móviles
+    function updateViewportHeight() {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+    
+    window.addEventListener('resize', updateViewportHeight);
+    window.addEventListener('orientationchange', updateViewportHeight);
+    
+    // Llamada inicial
+    updateViewportHeight();
+    
+    return () => {
+      window.removeEventListener('resize', updateViewportHeight);
+      window.removeEventListener('orientationchange', updateViewportHeight);
+    };
+  }, []);
+  
+  return null;
+}
+
+// Uso en layout principal
+export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <body>
+        <ViewportManager />
+        {children}
+      </body>
+    </html>
+  );
+}
+
+// En CSS (global.css)
+.full-vh {
+  height: 100vh; /* Fallback */
+  height: calc(var(--vh, 1vh) * 100); /* Corregido para móviles */
+}
+```
+
+### 2. Reducción de JavaScript crítico para móviles
+
+```tsx
+// components/ui/ResponsiveFeatures.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+
+// Versión ligera para móviles
+function LightFeatureList({ features }) {
+  return (
+    <ul className="space-y-2">
+      {features.map(feature => (
+        <li key={feature.id} className="flex items-center">
+          <span className="mr-2">✓</span>
+          <span>{feature.title}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Versión completa con animaciones para desktop
+const AnimatedFeatureList = dynamic(
+  () => import('./AnimatedFeatureList'),
+  { ssr: false }
+);
+
+export function ResponsiveFeatures({ features }) {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  return isMobile ? (
+    <LightFeatureList features={features} />
+  ) : (
+    <AnimatedFeatureList features={features} />
+  );
+}
+```
+
+---
+
+## 🧠 Precarga y prefetch inteligente
+
+### 1. Componente de prefetch inteligente
+
+```tsx
+// components/ui/SmartLink.tsx
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect } from 'react';
+
+interface SmartLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+  href: string;
+  prefetchStrategy?: 'hover' | 'visible' | 'none';
+  children: React.ReactNode;
+  preloadImages?: boolean;
+}
+
+export function SmartLink({
+  href,
+  prefetchStrategy = 'hover',
+  preloadImages = true,
+  children,
+  ...props
+}: SmartLinkProps) {
+  const router = useRouter();
+  const [isHovering, setIsHovering] = useState(false);
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  
+  // Prefetch solo bajo ciertas condiciones
+  useEffect(() => {
+    if (prefetchStrategy === 'none') return;
+    
+    // Intersection Observer para strategy="visible"
+    if (prefetchStrategy === 'visible') {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            router.prefetch(href);
+            
+            // Precargar imágenes si está habilitado
+            if (preloadImages) {
+              prefetchImagesInPath(href);
+            }
+            
+            observer.disconnect();
+          }
+        },
+        { rootMargin: '200px' }
+      );
+      
+      if (linkRef.current) {
+        observer.observe(linkRef.current);
+      }
+      
+      return () => observer.disconnect();
+    }
+    
+    // Prefetch en hover
+    if (prefetchStrategy === 'hover' && isHovering) {
+      router.prefetch(href);
+      
+      // Precargar imágenes si está habilitado
+      if (preloadImages) {
+        prefetchImagesInPath(href);
+      }
+    }
+  }, [href, isHovering, prefetchStrategy, preloadImages, router]);
+  
+  // Función para precargar imágenes en la página de destino
+  const prefetchImagesInPath = async (path: string) => {
+    try {
+      // Intenta obtener HTML de la página
+      const res = await fetch(path);
+      const html = await res.text();
+      
+      // Buscar URLs de imágenes críticas
+      const imgRegex = /<img[^>]+data-critical="true"[^>]+src="([^"]+)"/g;
+      const matches = [...html.matchAll(imgRegex)];
+      
+      // Precargar imágenes encontradas
+      matches.forEach(match => {
+        const imgUrl = match[1];
+        const img = new Image();
+        img.src = imgUrl;
+      });
+    } catch (error) {
+      console.error('Error prefetching images:', error);
+    }
+  };
+  
+  return (
+    <Link
+      href={href}
+      ref={linkRef}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      onTouchStart={() => setIsHovering(true)}
+      {...props}
+    >
+      {children}
+    </Link>
+  );
+}
+```
+
+### 2. Uso de `<link rel="preload">` para recursos críticos
+
+```tsx
+// app/layout.tsx
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <head>
+        {/* Precargar recursos críticos */}
+        <link
+          rel="preload"
+          href="https://cdn.tusitio.com/fonts/brand.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="https://cdn.tusitio.com/logo.svg"
+          as="image"
+          type="image/svg+xml"
+        />
+        <link
+          rel="dns-prefetch"
+          href="https://analytics.tusitio.com"
+        />
+        <link
+          rel="preconnect"
+          href="https://cdn.tusitio.com"
+          crossOrigin="anonymous"
+        />
+      </head>
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+---
+
+## 🧪 Monitoring de rendimiento en producción
+
+### 1. Web Vitals Tracker
+
+```tsx
+// lib/vitals.ts
+import { useReportWebVitals } from 'next/web-vitals';
+
+export function WebVitals() {
+  useReportWebVitals(metric => {
+    // Enviar a servicio de analytics
+    const url = process.env.NEXT_PUBLIC_ANALYTICS_URL;
+    
+    if (!url) return;
+    
+    const body = JSON.stringify({
+      name: metric.name,
+      value: metric.value,
+      id: metric.id,
+      startTime: metric.startTime,
+      label: metric.label,
+      page: window.location.pathname,
+    });
+    
+    // Beacon API tiene mejor rendimiento para analytics de salida
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, body);
+    } else {
+      // Fallback a fetch
+      fetch(url, {
+        body,
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+  });
+  
+  return null;
+}
+
+// app/layout.tsx
+import { WebVitals } from '@/lib/vitals';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <body>
+        {process.env.NODE_ENV === 'production' && <WebVitals />}
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+### 2. User Timing API
+
+```typescript
+// lib/performance.ts
+export function markStart(markName: string) {
+  if (typeof window !== 'undefined' && window.performance) {
+    window.performance.mark(`${markName}-start`);
+  }
+}
+
+export function markEnd(markName: string) {
+  if (typeof window !== 'undefined' && window.performance) {
+    window.performance.mark(`${markName}-end`);
+    window.performance.measure(
+      markName,
+      `${markName}-start`,
+      `${markName}-end`
+    );
+    
+    // Obtener la medición
+    const measure = window.performance.getEntriesByName(markName)[0];
+    
+    // Enviar a analytics o logging
+    console.log(`${markName}: ${measure.duration.toFixed(2)}ms`);
+    
+    // Limpiar marcas
+    window.performance.clearMarks(`${markName}-start`);
+    window.performance.clearMarks(`${markName}-end`);
+    window.performance.clearMeasures(markName);
+  }
+}
+
+// Uso en componentes
+import { markStart, markEnd } from '@/lib/performance';
+
+export function HeavyComponent() {
+  useEffect(() => {
+    markStart('heavy-component-render');
+    
+    return () => {
+      markEnd('heavy-component-render');
+    };
+  }, []);
+  
+  // ...
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Usar siempre imágenes optimizadas a través del componente `<Image />` de Next.js
+- Para imágenes críticas (LCP), usar siempre `priority={true}`
+- Implementar skeleton loaders para reducir CLS durante la carga
+- Dividir código JavaScript con `dynamic import` para componentes pesados
+- Usar Route Groups para organizar y optimizar el splitting de código
+- Implementar fuentes con `next/font` con `display: 'swap'`
+- Evitar JavaScript innecesario en el cliente con Server Components cuando sea posible
+- Usar `fetchPriority="high"` para recursos críticos en el primer renderizado
+- Mantener componentes interactivos pequeños y ligeros
+- Implementar métricas RUM (Real User Monitoring) en producción
+- Dividir tareas pesadas con Web Workers para no bloquear el hilo principal
+- Optimizar imágenes con WebP o AVIF y dimensiones correctas
+- Aprovechar SSG e ISR para pre-renderizar páginas cuando sea posible
+- Utilizar Edge Functions para APIs críticas en rendimiento
+- Implementar caché efectiva a nivel de CDN con Cloudflare
+- Monitorear y reaccionar a métricas Core Web Vitals en producción
+
+---
+
+## 📋 Checklist de rendimiento
+
+- [ ] LCP < 2.5s
+- [ ] CLS < 0.1
+- [ ] TTFB < 0.8s
+- [ ] FID/INP < 200ms
+- [ ] Puntuación Lighthouse > 90 en Performance
+- [ ] Tiempo total de carga < 3s
+- [ ] JavaScript total < 300KB (gzipped)
+- [ ] Imágenes optimizadas (WebP/AVIF)
+- [ ] Fuentes optimizadas con fallbacks adecuados
+- [ ] Preloading de recursos críticos configurado
+- [ ] Skeleton loaders implementados
+- [ ] Prefetch inteligente configurado
+- [ ] Code splitting optimizado
+- [ ] Server Components utilizados donde sea posible
+- [ ] Monitoreo de Core Web Vitals en producción
+- [ ] Cache-Control headers optimizados 

@@ -1,0 +1,354 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: metadatos-dinamicos.mdc
+
+## 🎯 Propósito
+Establecer un sistema robusto de metadatos dinámicos para optimizar el SEO técnico del sitio web. Estos metadatos deben adaptarse a cada página, permitir personalización por ruta y reflejar el contenido actual para mejorar el posicionamiento en buscadores y experiencia en redes sociales.
+
+---
+
+## 🧩 Estructura base de metadatos
+
+### Componente Metadata
+```tsx
+// app/components/seo/Metadata.tsx
+import { Metadata } from 'next'
+
+export interface SEOProps {
+  title?: string;
+  description?: string;
+  keywords?: string[];
+  image?: string;
+  canonical?: string;
+  type?: 'website' | 'article' | 'product';
+  locale?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  author?: string;
+  section?: string;
+  noindex?: boolean;
+}
+
+export function generateMetadata({
+  title,
+  description,
+  keywords,
+  image,
+  canonical,
+  type = 'website',
+  locale = 'es-ES',
+  publishedAt,
+  updatedAt,
+  author,
+  section,
+  noindex,
+}: SEOProps): Metadata {
+  // Valores por defecto
+  const defaultTitle = 'Tu Empresa | Soluciones Tecnológicas';
+  const defaultDescription = 'Ofrecemos soluciones tecnológicas para automatizar y mejorar tus procesos de negocio.';
+  const defaultImage = 'https://cdn.tusitio.com/og/default-og.jpg';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://tusitio.com';
+  
+  // Construcción de metadatos
+  const metadata: Metadata = {
+    title: title ? `${title} | Tu Empresa` : defaultTitle,
+    description: description || defaultDescription,
+    keywords: keywords?.join(', '),
+    openGraph: {
+      title: title || defaultTitle,
+      description: description || defaultDescription,
+      url: canonical || baseUrl,
+      siteName: 'Tu Empresa',
+      images: [
+        {
+          url: image || defaultImage,
+          width: 1200,
+          height: 630,
+          alt: title || defaultTitle,
+        },
+      ],
+      locale,
+      type,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: title || defaultTitle,
+      description: description || defaultDescription,
+      images: [image || defaultImage],
+      creator: '@tuempresa',
+    },
+    alternates: {
+      canonical: canonical || baseUrl,
+    },
+    robots: noindex ? 'noindex, nofollow' : 'index, follow',
+  };
+
+  // Metadatos adicionales para artículos
+  if (type === 'article') {
+    metadata.openGraph = {
+      ...metadata.openGraph,
+      publishedTime: publishedAt,
+      modifiedTime: updatedAt,
+      authors: [author || 'Tu Empresa'],
+      section,
+    };
+  }
+
+  return metadata;
+}
+```
+
+---
+
+## 📄 Implementación en páginas estáticas
+
+```tsx
+// app/nosotros/page.tsx
+import { Metadata } from 'next';
+import { generateMetadata } from '@/components/seo/Metadata';
+
+export const metadata: Metadata = generateMetadata({
+  title: 'Sobre Nosotros',
+  description: 'Conoce quiénes somos y nuestra historia de innovación en el sector tecnológico.',
+  keywords: ['nosotros', 'empresa', 'historia', 'equipo', 'innovación'],
+  image: 'https://cdn.tusitio.com/nosotros/equipo-oficina.jpg',
+  canonical: 'https://tusitio.com/nosotros',
+});
+
+export default function AboutPage() {
+  // Contenido de la página
+}
+```
+
+---
+
+## 📑 Implementación en páginas dinámicas
+
+```tsx
+// app/blog/[slug]/page.tsx
+import { Metadata } from 'next';
+import { generateMetadata } from '@/components/seo/Metadata';
+import { getBlogPostBySlug, getAllBlogSlugs } from '@/lib/blog';
+
+// Generación de rutas dinámicas
+export async function generateStaticParams() {
+  const posts = await getAllBlogSlugs();
+  return posts.map((slug) => ({ slug }));
+}
+
+// Generación de metadatos dinámicos
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const post = await getBlogPostBySlug(params.slug);
+  
+  if (!post) {
+    return generateMetadata({
+      title: 'Artículo no encontrado',
+      description: 'El artículo que buscas no existe o ha sido movido.',
+      noindex: true,
+    });
+  }
+  
+  return generateMetadata({
+    title: post.title,
+    description: post.excerpt,
+    keywords: post.tags,
+    image: post.coverImage,
+    canonical: `https://tusitio.com/blog/${post.slug}`,
+    type: 'article',
+    publishedAt: post.publishedAt,
+    updatedAt: post.updatedAt,
+    author: post.author.name,
+    section: post.category,
+  });
+}
+
+export default async function BlogPostPage({ params }: { params: { slug: string } }) {
+  const post = await getBlogPostBySlug(params.slug);
+  
+  if (!post) {
+    // Manejar 404
+    return <div>Artículo no encontrado</div>;
+  }
+  
+  // Contenido del artículo
+}
+```
+
+---
+
+## 🧠 Implementación de JSON-LD
+
+```tsx
+// app/components/seo/JsonLd.tsx
+import { Article, BreadcrumbList, FAQPage, Organization, Product, WebSite } from 'schema-dts';
+
+interface JsonLdProps {
+  type: 'website' | 'article' | 'product' | 'faq' | 'organization' | 'breadcrumb';
+  data: any;
+}
+
+export default function JsonLd({ type, data }: JsonLdProps) {
+  let schema;
+
+  switch (type) {
+    case 'website':
+      schema = {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: data.name,
+        url: data.url,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${data.url}/buscar?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      } as WebSite;
+      break;
+    case 'article':
+      schema = {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: data.title,
+        image: data.image,
+        author: {
+          '@type': 'Person',
+          name: data.author,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'Tu Empresa',
+          logo: {
+            '@type': 'ImageObject',
+            url: 'https://cdn.tusitio.com/logos/logo.png',
+          },
+        },
+        datePublished: data.publishedAt,
+        dateModified: data.updatedAt,
+        description: data.description,
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': data.url,
+        },
+      } as Article;
+      break;
+    // Otros casos (product, faq, organization, breadcrumb)
+  }
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+}
+```
+
+### Ejemplo de uso de JSON-LD
+
+```tsx
+// app/blog/[slug]/page.tsx
+import JsonLd from '@/components/seo/JsonLd';
+
+export default async function BlogPostPage({ params }: { params: { slug: string } }) {
+  const post = await getBlogPostBySlug(params.slug);
+  
+  if (!post) {
+    return <div>Artículo no encontrado</div>;
+  }
+  
+  return (
+    <>
+      <article>
+        {/* Contenido del artículo */}
+      </article>
+      
+      <JsonLd 
+        type="article"
+        data={{
+          title: post.title,
+          image: post.coverImage,
+          author: post.author.name,
+          publishedAt: post.publishedAt,
+          updatedAt: post.updatedAt,
+          description: post.excerpt,
+          url: `https://tusitio.com/blog/${post.slug}`,
+        }}
+      />
+    </>
+  );
+}
+```
+
+---
+
+## 📊 Sistema de Breadcrumbs
+
+```tsx
+// app/components/seo/Breadcrumbs.tsx
+import Link from 'next/link';
+import JsonLd from './JsonLd';
+
+interface Breadcrumb {
+  name: string;
+  url: string;
+  current?: boolean;
+}
+
+interface BreadcrumbsProps {
+  items: Breadcrumb[];
+}
+
+export default function Breadcrumbs({ items }: BreadcrumbsProps) {
+  // Preparar datos para JSON-LD
+  const jsonLdData = {
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+
+  return (
+    <>
+      <nav className="text-sm breadcrumbs py-2" aria-label="Breadcrumb">
+        <ol className="flex flex-wrap items-center space-x-1">
+          {items.map((item, index) => (
+            <li key={item.url} className="flex items-center">
+              {index > 0 && <span className="mx-2 text-gray-400">/</span>}
+              {item.current ? (
+                <span className="font-medium text-gray-700" aria-current="page">
+                  {item.name}
+                </span>
+              ) : (
+                <Link href={item.url} className="text-primary hover:text-primary-dark">
+                  {item.name}
+                </Link>
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
+      
+      <JsonLd type="breadcrumb" data={jsonLdData} />
+    </>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Todas las páginas deben implementar metadatos usando `generateMetadata`
+- Las páginas dinámicas deben generar metadatos específicos para cada ruta
+- Las imágenes para OpenGraph deben tener dimensiones de 1200x630px
+- Implementar JSON-LD para tipos de contenido relevantes (artículos, productos, FAQ)
+- Incluir breadcrumbs en todas las páginas excepto Home
+- Usar canonical URLs para prevenir contenido duplicado
+- Las descripciones deben tener entre 120-160 caracteres
+- Los títulos deben tener menos de 60 caracteres
+- Validar metadatos con herramientas como Structured Data Testing Tool 

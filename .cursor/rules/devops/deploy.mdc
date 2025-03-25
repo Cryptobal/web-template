@@ -1,0 +1,768 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: deploy.mdc
+
+## 🎯 Propósito
+Establecer un flujo de despliegue optimizado, escalable y seguro que utilice Vercel para el hosting principal y Cloudflare para CDN, DNS, y protección, asegurando máximo rendimiento, disponibilidad global y seguridad mientras se facilita la integración continua.
+
+---
+
+## 🚀 Configuración de Vercel
+
+### 1. Configuración básica de proyecto
+
+```json
+// vercel.json
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "regions": ["cdg1", "sfo1", "iad1"], // Europa, EEUU oeste, EEUU este
+  "github": {
+    "silent": true,
+    "autoJobCancelation": true
+  },
+  "env": {
+    "NEXT_PUBLIC_SITE_URL": "https://tusitio.com"
+  }
+}
+```
+
+### 2. Optimización de rendimiento
+
+```json
+// vercel.json (adicional)
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=31536000"
+        }
+      ]
+    },
+    {
+      "source": "/_next/image(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/_next/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 3. Configuración de dominios
+
+En el dashboard de Vercel:
+1. Ir a "Settings" > "Domains"
+2. Agregar el dominio principal `tusitio.com` y el subdominio `www.tusitio.com`
+3. Configurar el dominio primario como `tusitio.com` (sin www)
+4. Habilitar "Redirect www to root domain"
+
+### 4. Automatización de despliegue
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          working-directory: ./
+```
+
+### 5. Entornos de preview
+
+```json
+// .vercel/project.json
+{
+  "orgId": "your-org-id",
+  "projectId": "your-project-id",
+  "settings": {
+    "devCommand": "npm run dev",
+    "installCommand": "npm install",
+    "framework": "nextjs",
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "rootDirectory": "./",
+    "devEnvironment": {
+      "preview": {
+        "previewUrl": "https://{branch}.preview.tusitio.vercel.app"
+      }
+    }
+  }
+}
+```
+
+---
+
+## ☁️ Integración con Cloudflare
+
+### 1. Configuración DNS
+
+En el panel de Cloudflare:
+1. Agregar dominio a Cloudflare y actualizar nameservers en el registrador
+2. Configurar registros DNS:
+
+```
+# Registro A para apex domain (tusitio.com)
+Tipo: A
+Nombre: @
+Contenido: 76.76.21.21 (IP de Vercel)
+Proxy: ✅ Activado
+TTL: Automático
+
+# Registro CNAME para subdominio www
+Tipo: CNAME
+Nombre: www
+Contenido: cname.vercel-dns.com.
+Proxy: ✅ Activado
+TTL: Automático
+
+# Registros MX para correo (opcional)
+Tipo: MX
+Nombre: @
+Contenido: mx1.forwardmail.net
+Prioridad: 10
+Proxy: ❌ Desactivado
+TTL: Automático
+```
+
+### 2. Configuración de SSL/TLS
+
+```
+# Configuración en panel de Cloudflare
+SSL/TLS > Overview:
+  Modo: Full (strict)
+
+SSL/TLS > Edge Certificates:
+  Always Use HTTPS: ✅ Activado
+  HTTP Strict Transport Security (HSTS): ✅ Activado con max-age=31536000
+  Minimum TLS Version: TLS 1.2
+  Opportunistic Encryption: ✅ Activado
+  TLS 1.3: ✅ Activado
+  Automatic HTTPS Rewrites: ✅ Activado
+```
+
+### 3. Reglas de página y optimizaciones
+
+```
+# Cache en Cloudflare
+Caching > Configuration:
+  Caching Level: Standard
+  Browser Cache TTL: Respect origin headers
+  Always Online: ✅ Activado
+
+# Reglas de Page Rules
+Configurar en Page Rules:
+
+1. Regla para Static Assets:
+URL Pattern: tusitio.com/_next/static/*
+Settings:
+  - Cache Level: Cache Everything
+  - Edge Cache TTL: 1 month
+  - Browser Cache TTL: 1 month
+  - Respect Origin Headers: ❌ Desactivado
+
+2. Regla para Imágenes:
+URL Pattern: tusitio.com/_next/image*
+Settings:
+  - Cache Level: Cache Everything
+  - Edge Cache TTL: 1 month
+  - Browser Cache TTL: 1 month
+  - Respect Origin Headers: ❌ Desactivado
+
+3. Regla para APIs:
+URL Pattern: tusitio.com/api/*
+Settings:
+  - Cache Level: Bypass
+  - Disable Security: ❌ Desactivado
+  - Browser Cache TTL: 30 minutes
+```
+
+### 4. Optimizaciones de rendimiento
+
+```
+# Cloudflare Speed
+Speed > Optimization:
+  Auto Minify: ✅ HTML, CSS, y JavaScript
+  Brotli: ✅ Activado
+  Early Hints: ✅ Activado
+  HTTP/2: ✅ Activado
+  HTTP/3 (with QUIC): ✅ Activado
+  0-RTT Connection Resumption: ✅ Activado
+  WebSockets: ✅ Activado
+  Rocket Loader: ❌ Desactivado (conflicto potencial con Next.js)
+  Mirage: ❌ Desactivado (usar Next.js Image en su lugar)
+  Zaraz: Configurar según necesidades de analytics
+```
+
+### 5. Protección de seguridad
+
+```
+# Configuración de WAF
+Security > WAF:
+  Configurar reglas personalizadas:
+
+1. Regla para proteger admin y API:
+Description: Proteger rutas sensibles
+Expression: (http.request.uri.path contains "/admin" or http.request.uri.path contains "/dashboard") and not ip.src in {66.249.66.1/32 11.22.33.44/32}
+Action: Challenge
+
+2. Regla para evitar escaneos:
+Description: Bloquear escaneos agresivos
+Expression: (http.request.uri.path contains "wp-login.php" or http.request.uri.path contains "xmlrpc.php" or http.request.uri.path contains ".env")
+Action: Block
+
+# Bot Management
+Security > Bot Management:
+  Modo: ✅ Activado
+  Configuración: Balanced
+```
+
+---
+
+## 🔄 Configuración de CI/CD
+
+### 1. Flujo de trabajo para despliegue progresivo
+
+```yaml
+# .github/workflows/progressive-deploy.yml
+name: Progressive Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npm run lint
+      
+      - name: Type check
+        run: npm run typecheck
+      
+      - name: Run tests
+        run: npm run test
+      
+      - name: Build
+        run: npm run build
+  
+  deploy_preview:
+    needs: build_and_test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to Vercel (Preview)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          vercel-args: '--scope your-team-name'
+  
+  deploy_staging:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to Vercel (Staging)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          alias-domains: |
+            staging.tusitio.com
+          vercel-args: '--prod --scope your-team-name'
+  
+  deploy_production:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://tusitio.com
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to Vercel (Production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod --scope your-team-name'
+```
+
+### 2. Purga de caché automática
+
+```yaml
+# .github/workflows/cache-purge.yml
+name: Purge Cloudflare Cache
+
+on:
+  workflow_run:
+    workflows: ["Progressive Deployment"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  purge_cache:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Purge Cloudflare Cache
+        uses: jakejarvis/cloudflare-purge-action@v0.3.0
+        env:
+          CLOUDFLARE_ZONE: ${{ secrets.CLOUDFLARE_ZONE }}
+          CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+```
+
+---
+
+## 📊 Analytics y monitorización
+
+### 1. Vercel Analytics
+
+```typescript
+// app/layout.tsx
+import { Analytics } from '@vercel/analytics/react';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <body>
+        {children}
+        <Analytics />
+      </body>
+    </html>
+  );
+}
+```
+
+### 2. Monitorización de Status
+
+```yaml
+# .github/workflows/status-check.yml
+name: Site Status Monitoring
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Cada 15 minutos
+  workflow_dispatch:
+
+jobs:
+  status_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check main website status
+        uses: upptime/uptime-monitor@v1
+        with:
+          command: "curl -s -o /dev/null -w '%{http_code}' https://tusitio.com"
+          
+      - name: Check API status
+        uses: upptime/uptime-monitor@v1
+        with:
+          command: "curl -s -o /dev/null -w '%{http_code}' https://tusitio.com/api/health"
+      
+      - name: Send notification on failure
+        if: ${{ failure() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: '#site-monitoring'
+          SLACK_COLOR: 'danger'
+          SLACK_TITLE: 'Site Status Check Failed'
+          SLACK_MESSAGE: 'Site status check failed! Please investigate immediately.'
+```
+
+---
+
+## 🔍 Estrategias de Build Optimization
+
+### 1. Configuración de Next.js
+
+```typescript
+// next.config.js
+const nextConfig = {
+  // Usar build con generación estática siempre que sea posible
+  output: 'export',  // Para sitios totalmente estáticos
+  // O...
+  // output: 'standalone', // Para sitios con APIs y rutas dinámicas
+  
+  // Optimización de imágenes
+  images: {
+    unoptimized: false, // Usar optimización de imágenes
+    domains: ['cdn.tusitio.com'],
+    formats: ['image/avif', 'image/webp'],
+  },
+  
+  // Compilación incremental para builds más rápidos
+  experimental: {
+    incrementalCacheHandlerPath: require.resolve('./cache-handler.js'),
+  },
+  
+  // Configuración de compresión para archivo más pequeños
+  compress: true,
+  
+  // Configuración de análisis de build
+  webpack(config, { isServer, dev }) {
+    // Si estamos en producción y queremos analizar el build
+    if (!dev && !isServer && process.env.ANALYZE === 'true') {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          reportFilename: 'bundle-analysis.html',
+        })
+      );
+    }
+    
+    return config;
+  },
+};
+
+module.exports = nextConfig;
+```
+
+### 2. Cache handler personalizado
+
+```typescript
+// cache-handler.js
+const fs = require('fs');
+const path = require('path');
+
+// Directory to store the cache
+const CACHE_DIR = path.join(process.cwd(), '.next/cache');
+
+// Ensure the cache directory exists
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+module.exports = class CacheHandler {
+  constructor(options) {
+    this.options = options;
+  }
+
+  async get(key) {
+    try {
+      const filePath = path.join(CACHE_DIR, key);
+      
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+      
+      const content = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(content);
+      
+      // Check if the data is expired
+      if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
+        // Data is expired, remove it
+        fs.unlinkSync(filePath);
+        return null;
+      }
+      
+      return data.value;
+    } catch (error) {
+      console.error('Error reading from cache:', error);
+      return null;
+    }
+  }
+
+  async set(key, data, options = {}) {
+    try {
+      const filePath = path.join(CACHE_DIR, key);
+      
+      const dataToStore = {
+        value: data,
+        expiresAt: options.ttl
+          ? new Date(Date.now() + options.ttl * 1000).toISOString()
+          : null,
+      };
+      
+      fs.writeFileSync(filePath, JSON.stringify(dataToStore));
+      return true;
+    } catch (error) {
+      console.error('Error writing to cache:', error);
+      return false;
+    }
+  }
+};
+```
+
+### 3. Script para Build en diferentes entornos
+
+```bash
+#!/bin/bash
+# build.sh
+
+# Detectar entorno
+ENVIRONMENT=${1:-development}
+echo "Building for environment: $ENVIRONMENT"
+
+# Cargar variables de entorno según el entorno
+if [ -f ".env.$ENVIRONMENT" ]; then
+  export $(grep -v '^#' .env.$ENVIRONMENT | xargs)
+  echo "Loaded environment variables from .env.$ENVIRONMENT"
+fi
+
+# Configuración específica del entorno
+case "$ENVIRONMENT" in
+  "production")
+    # Build con análisis de bundle para producción
+    export ANALYZE=true
+    npm run build
+    # Optimización adicional post-build
+    npx next-pwa
+    ;;
+  "staging")
+    # Build con opciones para staging
+    export ANALYZE=false
+    npm run build
+    ;;
+  *)
+    # Build normal para desarrollo
+    npm run build
+    ;;
+esac
+
+# Generar sitemap después del build si estamos en producción
+if [ "$ENVIRONMENT" = "production" ]; then
+  echo "Generating sitemap..."
+  node scripts/generate-sitemap.js
+fi
+
+echo "Build completed for $ENVIRONMENT"
+```
+
+---
+
+## 🌐 Estrategias Multi-región
+
+### 1. Configuración para edge functions
+
+```typescript
+// app/api/edge/route.ts
+export const runtime = 'edge';
+
+export async function GET(request: Request) {
+  // Esta función se ejecutará en el edge más cercano al usuario
+  const userRegion = request.headers.get('cf-ipcountry') || 'unknown';
+  
+  return new Response(JSON.stringify({
+    message: `Hello from the edge! You are connecting from ${userRegion}`,
+    timestamp: new Date().toISOString()
+  }), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600'
+    }
+  });
+}
+```
+
+### 2. Configuración para redirección geográfica
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  // Detectar país del usuario (Cloudflare proporciona este header)
+  const country = request.headers.get('cf-ipcountry')?.toLowerCase() || 'us';
+  
+  // URL actual
+  const url = request.nextUrl.clone();
+  
+  // Verificar si estamos en la home page
+  if (url.pathname === '/') {
+    // Redirigir a página específica del país en home
+    if (country === 'es' || country === 'mx' || country === 'co') {
+      url.pathname = '/es';
+      return NextResponse.redirect(url);
+    } else if (country === 'br') {
+      url.pathname = '/pt';
+      return NextResponse.redirect(url);
+    }
+    // Para otros países, mantener en inglés (default)
+  }
+  
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/'],
+};
+```
+
+---
+
+## 📱 Configuración avanzada
+
+### 1. Vercel integrado con Slack
+
+En el panel de Vercel:
+1. Ve a "Settings" > "Integrations"
+2. Busca "Slack" y haz clic en "Add Integration"
+3. Selecciona el canal de Slack y configura notificaciones para:
+   - Deployments (Success & Failed)
+   - Domain Management Changes
+   - Build Errors
+
+### 2. Configuración para PWA
+
+```typescript
+// next.config.js
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+});
+
+module.exports = withPWA({
+  // resto de la configuración...
+});
+
+// public/manifest.json
+{
+  "name": "Tu Sitio",
+  "short_name": "TuSitio",
+  "description": "Descripción de tu sitio web",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Deploy)
+
+- Siempre usar Vercel como plataforma de hosting principal por su integración nativa con Next.js
+- Siempre configurar Cloudflare como CDN/proxy con modo SSL "Full (strict)"
+- Habilitar GitHub Actions para CI/CD con pruebas automáticas antes del despliegue
+- Usar branch `main` para producción, `develop` para staging, y PR para previews
+- Configurar cache-control para assets estáticos con TTLs largos (1 año para contenido inmutable)
+- Siempre utilizar Edge Functions para APIs críticas en rendimiento
+- Configurar reglas de Page en Cloudflare para optimizar caching según tipo de contenido
+- Utilizar Cloudflare Workers para lógica edge cuando sea necesario
+- Mantener siempre activo Web Analytics en Vercel y Cloudflare para monitorización dual
+- Implementar health checks automáticos para detectar problemas temprano
+- Configurar notificaciones en Slack para eventos importantes de despliegue
+- Usar `.env.local` para variables de entorno en desarrollo y Vercel UI para producción
+- Definir dominios personalizados verificados en SSL tanto en Vercel como en Cloudflare
+- Purgar caché automáticamente después de cada despliegue en producción
+- Configurar un rollback automático en caso de fallos críticos post-despliegue
+
+---
+
+## 📋 Checklist de despliegue
+
+- [ ] Configuración de Vercel optimizada
+- [ ] Cloudflare configurado como proxy/CDN
+- [ ] DNS configurado correctamente
+- [ ] SSL/TLS habilitado en modo Full (strict)
+- [ ] Reglas de caching configuradas para assets estáticos
+- [ ] Headers de seguridad implementados
+- [ ] CI/CD configurado con GitHub Actions
+- [ ] Monitorización y alertas configuradas
+- [ ] Variables de entorno definidas en panel de Vercel
+- [ ] Web Analytics habilitado
+- [ ] Dominios personalizados configurados
+- [ ] Redirecciones www a non-www (o viceversa) activas
+- [ ] Configuración de build optimizada
+- [ ] Estrategia de rollback definida
+- [ ] Purga de caché automática configurada
+- [ ] Integración con Slack para notificaciones 

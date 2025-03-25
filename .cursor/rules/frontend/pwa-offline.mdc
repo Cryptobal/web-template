@@ -1,0 +1,1260 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: pwa-offline.mdc
+
+## 🎯 Propósito
+Establecer una arquitectura sólida para convertir la aplicación Next.js en una Progressive Web App (PWA) optimizada, con soporte completo para funcionalidades offline, instalación en dispositivos, y carga instantánea, mejorando así la retención de usuarios y la experiencia incluso en conexiones de red inestables.
+
+---
+
+## 📦 Configuración Base de PWA
+
+### 1. Instalación de paquetes necesarios
+
+```bash
+npm install next-pwa workbox-window
+# O usando Yarn
+yarn add next-pwa workbox-window
+```
+
+### 2. Configuración de `next.config.js`
+
+```javascript
+// next.config.js
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+  sw: 'service-worker.js',
+});
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
+  // Otras configuraciones de Next.js
+};
+
+module.exports = withPWA(nextConfig);
+```
+
+### 3. Web App Manifest
+
+```json
+// public/manifest.json
+{
+  "name": "Tu Sitio Web",
+  "short_name": "TuSitio",
+  "description": "Descripción de tu sitio web para PWA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+```
+
+### 4. Configuración en `<head>`
+
+```tsx
+// app/layout.tsx
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        
+        {/* PWA Meta Tags */}
+        <meta name="application-name" content="Tu Sitio Web" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="TuSitio" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#000000" />
+        
+        {/* PWA Icons */}
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="manifest" href="/manifest.json" />
+        
+        {/* Apple PWA Icons */}
+        <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-icon-152x152.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-icon-180x180.png" />
+        <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-icon-167x167.png" />
+        
+        {/* Splash Screens */}
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-2048-2732.png"
+          media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-1668-2388.png"
+          media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-1536-2048.png"
+          media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-1125-2436.png"
+          media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-1242-2688.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-828-1792.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-750-1334.png"
+          media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/icons/apple-splash-640-1136.png"
+          media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"
+        />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+---
+
+## 🖥️ Instalación de PWA
+
+### 1. Componente de Prompt de Instalación
+
+```tsx
+// components/pwa/InstallPrompt.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
+export function InstallPrompt() {
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+
+  useEffect(() => {
+    // Verificar si la PWA ya está instalada
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    // Capturar el evento beforeinstallprompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+      setShowPrompt(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    // Capturar cuando la app es instalada
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setShowPrompt(false);
+    };
+    
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    
+    await installPrompt.prompt();
+    
+    const choiceResult = await installPrompt.userChoice;
+    if (choiceResult.outcome === 'accepted') {
+      console.log('El usuario aceptó la instalación');
+    } else {
+      console.log('El usuario rechazó la instalación');
+    }
+
+    // Limpiar el prompt
+    setInstallPrompt(null);
+    setShowPrompt(false);
+  };
+
+  if (!showPrompt || isInstalled) return null;
+
+  return (
+    <div className="fixed bottom-4 left-4 right-4 md:right-auto md:left-4 md:max-w-sm p-4 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 z-50">
+      <div className="flex flex-col">
+        <h3 className="text-lg font-semibold mb-2">Instala nuestra App</h3>
+        <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4">
+          Instala esta aplicación en tu dispositivo para un acceso más rápido y una mejor experiencia.
+        </p>
+        <div className="flex space-x-2">
+          <Button 
+            variant="primary" 
+            size="sm"
+            onClick={handleInstallClick}
+          >
+            Instalar
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowPrompt(false)}
+          >
+            Ahora no
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2. Detección de Estado de Conexión
+
+```tsx
+// components/pwa/OfflineIndicator.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { WifiIcon, WifiOffIcon } from '@heroicons/react/24/outline';
+
+export function OfflineIndicator() {
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    // Inicializar con el estado actual de navegación
+    setIsOnline(navigator.onLine);
+
+    // Event listeners para cambios en la conexión
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (isOnline) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black py-2 px-4 text-center z-50 flex items-center justify-center">
+      <WifiOffIcon className="h-4 w-4 mr-2" />
+      <span className="text-sm font-medium">
+        Estás en modo offline. Algunas funciones podrían no estar disponibles.
+      </span>
+    </div>
+  );
+}
+```
+
+### 3. Integración de Componentes en Layout
+
+```tsx
+// app/layout.tsx
+import { Providers } from './providers';
+import { OfflineIndicator } from '@/components/pwa/OfflineIndicator';
+import { InstallPrompt } from '@/components/pwa/InstallPrompt';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <head>
+        {/* Meta tags como en el ejemplo anterior */}
+      </head>
+      <body>
+        <Providers>
+          <OfflineIndicator />
+          {children}
+          <InstallPrompt />
+        </Providers>
+      </body>
+    </html>
+  );
+}
+```
+
+---
+
+## 📱 Estrategias de Caché para Offline
+
+### 1. Configuración Personalizada de Workbox
+
+```typescript
+// workbox-config.js
+module.exports = {
+  swDest: 'public/sw.js',
+  runtimeCaching: [
+    // Caché de páginas HTML
+    {
+      urlPattern: /^https?.*/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'html-cache',
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 60 * 60 * 24, // 1 día
+        },
+      },
+    },
+    // Caché de imágenes
+    {
+      urlPattern: /\.(?:png|jpg|jpeg|webp|svg|gif)$/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'images-cache',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 60 * 60 * 24 * 30, // 30 días
+        },
+      },
+    },
+    // Caché de Google Fonts
+    {
+      urlPattern: /^https:\/\/fonts\.googleapis\.com/,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'google-fonts-stylesheets',
+      },
+    },
+    {
+      urlPattern: /^https:\/\/fonts\.gstatic\.com/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'google-fonts-webfonts',
+        expiration: {
+          maxEntries: 30,
+          maxAgeSeconds: 60 * 60 * 24 * 365, // 1 año
+        },
+      },
+    },
+    // API caching
+    {
+      urlPattern: /^https:\/\/api\.tusitio\.com\/api\//,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'api-cache',
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 60 * 60, // 1 hora
+        },
+        networkTimeoutSeconds: 10,
+      },
+    },
+    // Recursos estáticos de Next.js
+    {
+      urlPattern: /\/_next\/static\/.*/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'next-static',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 60 * 60 * 24 * 30, // 30 días
+        },
+      },
+    },
+    {
+      urlPattern: /\/_next\/image\?.*/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'next-image',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 60 * 60 * 24 * 30, // 30 días
+        },
+      },
+    },
+    {
+      urlPattern: /\/_next\/data\/.*/i,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'next-data',
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 60 * 60, // 1 hora
+        },
+      },
+    },
+  ],
+};
+```
+
+### 2. Service Worker Personalizado
+
+```typescript
+// public/custom-sw.js
+// Este archivo será inyectado en el Service Worker generado
+
+// Manejo de mensajes enviados al SW
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Evento install personalizado
+self.addEventListener('install', (event) => {
+  // Puedes agregar lógica personalizada aquí
+  console.log('Service Worker instalado.');
+});
+
+// Pre-caché de recursos críticos específicos
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.open('critical-assets').then((cache) => {
+      return cache.addAll([
+        '/', // Home page
+        '/offline', // Página de fallback offline
+        '/css/critical.css',
+        '/js/critical.js',
+        '/images/logo.svg',
+        '/icons/icon-512x512.png',
+      ]);
+    })
+  );
+});
+
+// Interceptar navegación a páginas no cacheadas en modo offline
+const FALLBACK_HTML_URL = '/offline';
+
+self.addEventListener('fetch', (event) => {
+  // Solo interceptar requests de navegación a HTML
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match(FALLBACK_HTML_URL);
+      })
+    );
+  }
+});
+```
+
+### 3. Página Offline de Fallback
+
+```tsx
+// app/offline/page.tsx
+import Link from 'next/link';
+import { WifiOffIcon } from '@heroicons/react/24/outline';
+
+export default function OfflinePage() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+      <WifiOffIcon className="h-24 w-24 text-neutral-400 mb-6" />
+      <h1 className="text-3xl font-bold mb-2">No hay conexión a Internet</h1>
+      <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-6">
+        No se pudo cargar esta página debido a un problema de conexión. 
+        Por favor, verifica tu conexión a Internet e intenta nuevamente.
+      </p>
+      <div className="space-y-4">
+        <Link
+          href="/"
+          className="inline-block px-6 py-3 bg-primary text-white rounded-md font-medium"
+        >
+          Volver al inicio
+        </Link>
+        <p className="text-sm text-neutral-500">
+          Ya puedes seguir navegando por las páginas que has visitado anteriormente.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## 🔄 Actualizaciones de Service Worker
+
+### 1. Hook para manejo de actualizaciones
+
+```tsx
+// hooks/usePwaUpdates.ts
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Workbox, messageSW } from 'workbox-window';
+
+interface PwaUpdateHookReturn {
+  isUpdateAvailable: boolean;
+  updateServiceWorker: () => void;
+}
+
+export function usePwaUpdates(): PwaUpdateHookReturn {
+  const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
+  const [wb, setWb] = useState<Workbox | null>(null);
+  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      window.workbox !== undefined
+    ) {
+      // Inicializar Workbox
+      const workbox = new Workbox('/sw.js');
+      setWb(workbox);
+
+      // Detectar cuando hay una nueva versión del worker esperando
+      workbox.addEventListener('waiting', () => {
+        setIsUpdateAvailable(true);
+      });
+
+      // Registrar el service worker
+      workbox.register().then((reg) => {
+        setRegistration(reg);
+      });
+
+      // Detectar cuando la página se actualiza después del skip-waiting
+      workbox.addEventListener('controlling', () => {
+        // Recargar la página para asegurarse de que se usa la nueva versión
+        window.location.reload();
+      });
+    }
+  }, []);
+
+  const updateServiceWorker = () => {
+    if (wb && registration && registration.waiting) {
+      // Enviar mensaje para que el worker aplique la actualización
+      messageSW(registration.waiting, { type: 'SKIP_WAITING' });
+    }
+  };
+
+  return { isUpdateAvailable, updateServiceWorker };
+}
+```
+
+### 2. Componente de Notificación de Actualización
+
+```tsx
+// components/pwa/UpdateNotification.tsx
+'use client';
+
+import { usePwaUpdates } from '@/hooks/usePwaUpdates';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
+
+export function UpdateNotification() {
+  const { isUpdateAvailable, updateServiceWorker } = usePwaUpdates();
+
+  if (!isUpdateAvailable) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 max-w-sm p-4 bg-primary text-white rounded-lg shadow-lg z-50">
+      <div className="flex items-start space-x-4">
+        <div className="shrink-0">
+          <ArrowPathIcon className="h-6 w-6" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-medium mb-1">Nueva versión disponible</h3>
+          <p className="text-sm opacity-90 mb-3">
+            Hay una nueva versión de la aplicación disponible. Actualiza para acceder a las últimas mejoras.
+          </p>
+          <button
+            onClick={updateServiceWorker}
+            className="px-4 py-2 bg-white text-primary rounded text-sm font-medium"
+          >
+            Actualizar ahora
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Añadir al layout principal
+// app/layout.tsx
+import { UpdateNotification } from '@/components/pwa/UpdateNotification';
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <body>
+        {children}
+        <InstallPrompt />
+        <UpdateNotification />
+      </body>
+    </html>
+  );
+}
+```
+
+---
+
+## 📊 Sincronización en Background
+
+### 1. API de Sincronización para Formularios
+
+```typescript
+// lib/pwa/backgroundSync.ts
+export interface SyncQueueItem {
+  id: string;
+  url: string;
+  method: 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  data: any;
+  timestamp: number;
+}
+
+/**
+ * Agrega una petición a la cola de sincronización de background
+ */
+export async function addToSyncQueue(
+  url: string,
+  method: 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  data: any
+): Promise<string> {
+  // Verificar si IndexedDB está disponible
+  if (!('indexedDB' in window)) {
+    throw new Error('IndexedDB no está soportado en este navegador');
+  }
+
+  return new Promise((resolve, reject) => {
+    const id = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const request = indexedDB.open('sync-queue-db', 1);
+
+    request.onerror = () => reject(new Error('Error al abrir la base de datos'));
+
+    request.onupgradeneeded = (event) => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('sync-queue')) {
+        db.createObjectStore('sync-queue', { keyPath: 'id' });
+      }
+    };
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction('sync-queue', 'readwrite');
+      const store = transaction.objectStore('sync-queue');
+
+      const item: SyncQueueItem = {
+        id,
+        url,
+        method,
+        data,
+        timestamp: Date.now(),
+      };
+
+      const addRequest = store.add(item);
+
+      addRequest.onsuccess = () => {
+        // Registrar una sincronización de background si está disponible
+        if ('serviceWorker' in navigator && 'sync' in window.registration) {
+          navigator.serviceWorker.ready
+            .then((registration) => {
+              registration.sync.register('sync-form-data')
+                .then(() => resolve(id))
+                .catch(() => resolve(id)); // Continuar incluso si falla el registro
+            })
+            .catch(() => resolve(id));
+        } else {
+          resolve(id);
+        }
+      };
+
+      addRequest.onerror = () => reject(new Error('Error al guardar en IndexedDB'));
+    };
+  });
+}
+
+/**
+ * Procesa la cola de sincronización (llamado desde el Service Worker)
+ */
+export async function processSyncQueue(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('sync-queue-db', 1);
+
+    request.onerror = () => reject(new Error('Error al abrir la base de datos'));
+
+    request.onsuccess = async () => {
+      const db = request.result;
+      const transaction = db.transaction('sync-queue', 'readwrite');
+      const store = transaction.objectStore('sync-queue');
+      const items = await store.getAll();
+
+      if (items.length === 0) {
+        resolve();
+        return;
+      }
+
+      // Procesar cada item en la cola
+      const processPromises = items.map(async (item: SyncQueueItem) => {
+        try {
+          const response = await fetch(item.url, {
+            method: item.method,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(item.data),
+          });
+
+          if (response.ok) {
+            // Eliminar de la cola si fue exitoso
+            store.delete(item.id);
+            return true;
+          }
+          return false;
+        } catch (error) {
+          console.error('Error al procesar item de cola:', error);
+          return false;
+        }
+      });
+
+      try {
+        await Promise.all(processPromises);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
+  });
+}
+```
+
+### 2. Extensión del Service Worker para Background Sync
+
+```javascript
+// Agregar a public/custom-sw.js
+
+// Sincronización en Background
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-form-data') {
+    event.waitUntil(
+      // Importar dinámicamente el script de procesamiento
+      import('/js/process-sync-queue.js')
+        .then((module) => module.processSyncQueue())
+        .catch((error) => {
+          console.error('Error al procesar la cola de sincronización:', error);
+        })
+    );
+  }
+});
+
+// Escuchar periodically-sync para actualizar contenido en background
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'update-content') {
+    event.waitUntil(
+      // Actualizar el contenido cacheado
+      fetch('/api/latest-content')
+        .then((response) => {
+          if (response.ok) {
+            return caches.open('content-cache').then((cache) => {
+              return cache.put('/api/latest-content', response);
+            });
+          }
+          throw new Error('No se pudo actualizar el contenido');
+        })
+        .catch((error) => {
+          console.error('Error en periodic sync:', error);
+        })
+    );
+  }
+});
+```
+
+### 3. Componente de Formulario con Soporte Offline
+
+```tsx
+// components/forms/OfflineAwareForm.tsx
+'use client';
+
+import { useState, FormEvent } from 'react';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { addToSyncQueue } from '@/lib/pwa/backgroundSync';
+import { AlertCircleIcon, CheckCircleIcon, CloudOffIcon } from '@heroicons/react/24/outline';
+
+interface OfflineAwareFormProps {
+  endpoint: string;
+  method?: 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  onSuccess?: () => void;
+  onError?: (error: Error) => void;
+  children: React.ReactNode;
+}
+
+export function OfflineAwareForm({
+  endpoint,
+  method = 'POST',
+  onSuccess,
+  onError,
+  children,
+}: OfflineAwareFormProps) {
+  const { isOnline } = useNetworkStatus();
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error' | 'queued'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setStatus('submitting');
+    
+    const formData = new FormData(e.currentTarget);
+    const data = Object.fromEntries(formData.entries());
+    
+    if (isOnline) {
+      try {
+        const response = await fetch(endpoint, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Error al enviar el formulario');
+        }
+        
+        setStatus('success');
+        onSuccess?.();
+        
+        // Limpiar formulario después de éxito
+        e.currentTarget.reset();
+        
+        // Resetear estado después de 3 segundos
+        setTimeout(() => setStatus('idle'), 3000);
+      } catch (error) {
+        setStatus('error');
+        setErrorMessage(error instanceof Error ? error.message : 'Error al enviar');
+        onError?.(error instanceof Error ? error : new Error('Error desconocido'));
+      }
+    } else {
+      // En modo offline, encolar para sincronización posterior
+      try {
+        await addToSyncQueue(endpoint, method, data);
+        setStatus('queued');
+        
+        // También limpiar el formulario después de encolar
+        e.currentTarget.reset();
+        
+        // Resetear estado después de 3 segundos
+        setTimeout(() => setStatus('idle'), 3000);
+      } catch (error) {
+        setStatus('error');
+        setErrorMessage('No se pudo almacenar el formulario para envío posterior');
+        onError?.(error instanceof Error ? error : new Error('Error desconocido'));
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {children}
+        
+        <button
+          type="submit"
+          disabled={status === 'submitting'}
+          className="w-full py-2 px-4 bg-primary text-white rounded-md font-medium"
+        >
+          {status === 'submitting' ? (
+            'Enviando...'
+          ) : isOnline ? (
+            'Enviar'
+          ) : (
+            'Guardar para enviar más tarde'
+          )}
+        </button>
+      </form>
+      
+      {/* Mostrar mensajes de estado */}
+      {status === 'success' && (
+        <div className="bg-green-50 border border-green-200 text-green-800 rounded-md p-3 flex items-start">
+          <CheckCircleIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+          <span>
+            ¡Formulario enviado correctamente!
+          </span>
+        </div>
+      )}
+      
+      {status === 'queued' && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-3 flex items-start">
+          <CloudOffIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+          <span>
+            Sin conexión. Tu formulario se enviará automáticamente cuando vuelvas a estar online.
+          </span>
+        </div>
+      )}
+      
+      {status === 'error' && (
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-3 flex items-start">
+          <AlertCircleIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+          <span>
+            {errorMessage || 'Ocurrió un error al procesar el formulario'}
+          </span>
+        </div>
+      )}
+      
+      {!isOnline && status === 'idle' && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-3 flex items-start text-sm">
+          <CloudOffIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+          <span>
+            Estás offline. Puedes enviar el formulario igualmente y se enviará automáticamente cuando vuelvas a estar online.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 📲 Notificaciones Push
+
+### 1. Setup básico de notificaciones
+
+```typescript
+// lib/pwa/notifications.ts
+export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (!('Notification' in window)) {
+    throw new Error('Este navegador no soporta notificaciones');
+  }
+  
+  // Verificar si ya tenemos permiso
+  if (Notification.permission === 'granted') {
+    return 'granted';
+  }
+  
+  // Solicitar permiso
+  const permission = await Notification.requestPermission();
+  return permission;
+}
+
+export async function subscribeUserToPush(): Promise<PushSubscription | null> {
+  // Verificar soporte
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    throw new Error('Push messaging no está soportado en este navegador');
+  }
+  
+  try {
+    // Verificar permiso
+    const permission = await requestNotificationPermission();
+    if (permission !== 'granted') {
+      return null;
+    }
+    
+    // Obtener service worker
+    const registration = await navigator.serviceWorker.ready;
+    
+    // Obtener suscripción actual o crear una nueva
+    let subscription = await registration.pushManager.getSubscription();
+    
+    if (!subscription) {
+      // Crear nueva suscripción
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      
+      if (!vapidPublicKey) {
+        throw new Error('VAPID public key no está configurada');
+      }
+      
+      // Convertir la VAPID key a Uint8Array
+      const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+      
+      // Suscribir al usuario
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey,
+      });
+      
+      // Enviar la suscripción al servidor
+      await saveSubscriptionToServer(subscription);
+    }
+    
+    return subscription;
+  } catch (error) {
+    console.error('Error al suscribir a notificaciones push:', error);
+    return null;
+  }
+}
+
+// Enviar la suscripción al servidor
+async function saveSubscriptionToServer(subscription: PushSubscription): Promise<void> {
+  const response = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(subscription),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Error al guardar la suscripción en el servidor');
+  }
+}
+
+// Helper para convertir la VAPID key
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  
+  return outputArray;
+}
+```
+
+### 2. Componente para gestionar suscripciones
+
+```tsx
+// components/pwa/NotificationsManager.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { BellIcon, BellSlashIcon } from '@heroicons/react/24/outline';
+import { subscribeUserToPush, requestNotificationPermission } from '@/lib/pwa/notifications';
+
+export function NotificationsManager() {
+  const [permission, setPermission] = useState<NotificationPermission | 'default'>('default');
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Verificar soporte y estado actual
+  useEffect(() => {
+    // Verificar soporte de notificaciones
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setIsSupported(false);
+      return;
+    }
+    
+    // Obtener el estado actual de los permisos
+    setPermission(Notification.permission);
+    
+    // Verificar si ya está suscrito
+    async function checkSubscription() {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        setIsSubscribed(!!subscription);
+      } catch (error) {
+        console.error('Error al verificar suscripción:', error);
+      }
+    }
+    
+    checkSubscription();
+  }, []);
+
+  const handleSubscribe = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Solicitar permiso si no está concedido
+      if (permission !== 'granted') {
+        const newPermission = await requestNotificationPermission();
+        setPermission(newPermission);
+        
+        if (newPermission !== 'granted') {
+          return;
+        }
+      }
+      
+      // Suscribir al usuario
+      const subscription = await subscribeUserToPush();
+      setIsSubscribed(!!subscription);
+      
+      // Mostrar notificación de prueba
+      if (subscription) {
+        new Notification('¡Notificaciones activadas!', {
+          body: 'Ahora recibirás notificaciones importantes de nuestro sitio.',
+          icon: '/icons/icon-192x192.png',
+        });
+      }
+    } catch (error) {
+      console.error('Error al suscribir:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUnsubscribe = async () => {
+    setIsLoading(true);
+    
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      
+      if (subscription) {
+        // Eliminar suscripción en el servidor
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+          }),
+        });
+        
+        // Eliminar suscripción localmente
+        await subscription.unsubscribe();
+        setIsSubscribed(false);
+      }
+    } catch (error) {
+      console.error('Error al cancelar suscripción:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isSupported) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center space-x-2">
+      {isSubscribed ? (
+        <button
+          onClick={handleUnsubscribe}
+          disabled={isLoading}
+          className="flex items-center space-x-2 px-4 py-2 bg-neutral-200 dark:bg-neutral-800 rounded-md"
+          aria-label="Desactivar notificaciones"
+        >
+          <BellSlashIcon className="h-5 w-5" />
+          <span className="text-sm font-medium">Desactivar notificaciones</span>
+        </button>
+      ) : (
+        <button
+          onClick={handleSubscribe}
+          disabled={isLoading || permission === 'denied'}
+          className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-md"
+          aria-label="Activar notificaciones"
+        >
+          <BellIcon className="h-5 w-5" />
+          <span className="text-sm font-medium">Activar notificaciones</span>
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (PWA)
+
+- Implementar `next-pwa` para la configuración base de PWA
+- Generar correctamente todos los tamaños de íconos para diferentes plataformas
+- Asegurar que el manifest.json contiene toda la información necesaria
+- Incluir componentes de detección de estado offline
+- Proporcionar página de fallback para modo offline
+- Implementar estrategias de caché optimizadas por tipo de contenido
+- Configurar pre-caché de activos críticos para carga instantánea
+- Añadir soporte para sincronización en background de formularios
+- Implementar sistema de detección y gestión de actualizaciones
+- Optimizar el prompt de instalación para mejorar conversiones
+- Incluir soporte para notificaciones push cuando sea necesario
+- Asegurar que la PWA es instalable en todos los dispositivos principales
+- Configurar splash screens para experiencia nativa en iOS
+- Incluir indicadores claros del estado de conectividad
+
+---
+
+## 📋 Checklist de PWA
+
+- [ ] Configuración de `next-pwa` implementada
+- [ ] Web App Manifest completo
+- [ ] Íconos PWA generados en todos los tamaños necesarios
+- [ ] Service Worker configurado y optimizado
+- [ ] Splash screens para iOS configurados
+- [ ] Página de fallback offline creada
+- [ ] Estrategias de caché definidas por tipo de contenido
+- [ ] Componente de instalación (A2HS) implementado
+- [ ] Indicador de estado offline visible
+- [ ] Sistema de actualización de Service Worker
+- [ ] Background sync para formularios
+- [ ] Acceso a funcionalidades nativas (si es necesario)
+- [ ] Integración con sistema de notificaciones push
+- [ ] Core Web Vitals optimizados para PWA
+- [ ] PWA testada en diferentes dispositivos y plataformas 

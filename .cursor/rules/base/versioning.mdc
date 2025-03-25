@@ -1,0 +1,318 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: versioning.mdc
+
+## 🎯 Propósito
+Establecer un sistema coherente para el versionado de código, APIs y recursos, siguiendo estándares como SemVer, permitiendo actualizaciones predecibles y minimizando el impacto en usuarios existentes.
+
+---
+
+## 📦 Versionado de código
+
+### 1. Semantic Versioning (SemVer)
+
+Estructura: `MAJOR.MINOR.PATCH` (ej. `1.2.3`)
+
+- **MAJOR**: Cambios incompatibles con versiones anteriores
+- **MINOR**: Funcionalidades nuevas compatibles con versiones anteriores
+- **PATCH**: Correcciones de errores compatibles con versiones anteriores
+
+```json
+// package.json
+{
+  "name": "my-app",
+  "version": "1.2.3",
+  "private": true,
+  "scripts": {
+    "release:patch": "npm version patch && git push && git push --tags",
+    "release:minor": "npm version minor && git push && git push --tags",
+    "release:major": "npm version major && git push && git push --tags"
+  }
+}
+```
+
+### 2. Convencional Commits
+
+Formato de mensajes de commit estructurados para generar changelogs automáticamente:
+
+```bash
+<tipo>[ámbito opcional]: <descripción>
+
+[cuerpo opcional]
+
+[nota(s) al pie opcional(es)]
+```
+
+Tipos principales:
+- `fix:` - Corrección de errores (PATCH)
+- `feat:` - Nueva funcionalidad (MINOR)
+- `feat!:` o `fix!:` - Cambio incompatible (MAJOR)
+- `docs:` - Cambios en documentación
+- `style:` - Cambios de formato
+- `refactor:` - Refactorización de código
+- `test:` - Adición o corrección de tests
+- `chore:` - Tareas de mantenimiento
+
+```typescript
+// .commitlintrc.js
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'body-max-line-length': [2, 'always', 100],
+    'subject-case': [
+      2,
+      'never',
+      ['pascal-case', 'upper-case']
+    ]
+  }
+};
+```
+
+---
+
+## 🌐 Versionado de APIs
+
+### 1. Versionado por URL
+
+```typescript
+// Ejemplo de estructura de API con versión en URL
+// app/api/v1/users/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+  // Implementación de v1
+  return NextResponse.json({ users: [/* ... */] });
+}
+
+// app/api/v2/users/route.ts
+export async function GET(request: NextRequest) {
+  // Implementación de v2 con mejoras/cambios
+  return NextResponse.json({ 
+    data: { users: [/* ... */] }, 
+    pagination: { /* ... */ } 
+  });
+}
+```
+
+### 2. Versionado por encabezado o parámetro
+
+```typescript
+// app/api/users/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+  // Opción 1: Versión por encabezado
+  const apiVersion = request.headers.get('x-api-version') || '1';
+  
+  // Opción 2: Versión por parámetro de consulta
+  // const apiVersion = request.nextUrl.searchParams.get('version') || '1';
+  
+  if (apiVersion === '1') {
+    // Implementación v1
+    return NextResponse.json({ users: [/* ... */] });
+  } else if (apiVersion === '2') {
+    // Implementación v2
+    return NextResponse.json({ 
+      data: { users: [/* ... */] }, 
+      pagination: { /* ... */ } 
+    });
+  } else {
+    // Versión no soportada
+    return NextResponse.json(
+      { error: `API version ${apiVersion} not supported` },
+      { status: 400 }
+    );
+  }
+}
+```
+
+### 3. Gestión de cambios en API
+
+```typescript
+// lib/api/users/controllers.ts
+import { UserResponseV1, UserResponseV2, User } from '../types';
+
+// Transformadores para diferentes versiones de la API
+export function transformUserV1(user: User): UserResponseV1 {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+  };
+}
+
+export function transformUserV2(user: User): UserResponseV2 {
+  return {
+    id: user.id,
+    fullName: user.name,
+    email: user.email,
+    profileUrl: `/users/${user.id}`,
+    createdAt: user.createdAt.toISOString(),
+    // Campo nuevo en v2
+    status: user.status || 'active',
+  };
+}
+
+// Implementación de controladores por versión
+export async function getUsersV1() {
+  const users = await fetchUsers();
+  return users.map(transformUserV1);
+}
+
+export async function getUsersV2() {
+  const users = await fetchUsers();
+  return {
+    data: users.map(transformUserV2),
+    pagination: {
+      total: users.length,
+      page: 1,
+      perPage: 10,
+    }
+  };
+}
+```
+
+---
+
+## 📝 Documentación de versiones
+
+### 1. Changelogs automáticos
+
+```json
+// package.json (configuración standard-version)
+{
+  "scripts": {
+    "release": "standard-version"
+  },
+  "standard-version": {
+    "types": [
+      {"type": "feat", "section": "Nuevas funcionalidades"},
+      {"type": "fix", "section": "Correcciones de errores"},
+      {"type": "docs", "section": "Documentación"},
+      {"type": "style", "hidden": true},
+      {"type": "refactor", "section": "Refactorizaciones"},
+      {"type": "perf", "section": "Mejoras de rendimiento"},
+      {"type": "test", "hidden": true},
+      {"type": "chore", "hidden": true}
+    ]
+  }
+}
+```
+
+### 2. Documentación de API para desarrolladores
+
+```typescript
+// lib/api/swagger.ts
+import { createSwaggerSpec } from 'next-swagger-doc';
+
+export const apiSpec = createSwaggerSpec({
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Mi API',
+      version: '1.0.0',
+      description: 'Documentación de la API',
+    },
+    servers: [{ url: '/api' }],
+    paths: {
+      '/users': {
+        get: {
+          summary: 'Obtener usuarios',
+          parameters: [
+            {
+              name: 'x-api-version',
+              in: 'header',
+              schema: { type: 'string', enum: ['1', '2'] },
+              required: false,
+              description: 'Versión de la API a utilizar',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Lista de usuarios',
+              content: {
+                'application/json': {
+                  schema: {
+                    oneOf: [
+                      { $ref: '#/components/schemas/UsersResponseV1' },
+                      { $ref: '#/components/schemas/UsersResponseV2' },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: {
+        UsersResponseV1: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/UserV1' },
+        },
+        UserV1: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            email: { type: 'string' },
+          },
+        },
+        UsersResponseV2: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/UserV2' },
+            },
+            pagination: { $ref: '#/components/schemas/Pagination' },
+          },
+        },
+        UserV2: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            fullName: { type: 'string' },
+            email: { type: 'string' },
+            profileUrl: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            status: { type: 'string', enum: ['active', 'inactive'] },
+          },
+        },
+        Pagination: {
+          type: 'object',
+          properties: {
+            total: { type: 'integer' },
+            page: { type: 'integer' },
+            perPage: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+});
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Versionado)
+
+- Utilizar siempre SemVer para versionado de paquetes y aplicaciones
+- Seguir el formato de Conventional Commits para todos los mensajes
+- Incluir versión en la API (preferiblemente en URL) para cambios incompatibles
+- Mantener al menos una versión anterior para compatibilidad
+- Documentar cada cambio de versión en un CHANGELOG
+- Comunicar deprecated endpoints/features con antelación antes de eliminarlos
+- Evitar cambios incompatibles en versiones menores y de parche
+- Utilizar encabezados para versiones específicas de clientes
+- Implementar pruebas automáticas para asegurar compatibilidad entre versiones
+- Mantener definiciones claras de contratos de API por versión
+- Considerar estrategias de blue-green deployment para actualizaciones
+- Generar documentación actualizada con cada versión nueva
+- No reutilizar versiones eliminadas o deprecadas
+- Incluir fechas de fin de soporte (EOL) para versiones antiguas
+- Seguir un esquema de branches alineado con el flujo de versionado

@@ -1,0 +1,104 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: Estructura y buenas prácticas del Frontend (Next.js + TailwindCSS)
+
+## 🎯 Propósito
+Establecer convenciones claras y reutilizables para el desarrollo frontend de cualquier sitio web moderno, asegurando rendimiento, escalabilidad, accesibilidad, diseño unificado, experiencia de usuario superior y optimización SEO técnica.
+
+---
+
+## 🚀 Tecnologías base
+
+- **Framework:** Next.js (App Router)
+- **Estilos:** TailwindCSS (modo JIT)
+- **Componentes:** React funcional (`useState`, `useEffect`, `useContext`, etc.)
+- **Contenido dinámico:** Markdown (`.md`) con `frontmatter` para blog y textos
+- **Imágenes:** Next.js `<Image />` servidas desde CDN
+- **Deployment:** Vercel (con SSG preferido) u otro proveedor con soporte de generación estática
+
+---
+
+## 🧱 Estructura del proyecto recomendada
+/app
+/[slug]/page.tsx
+/page.tsx
+/layout.tsx
+/components
+/ui/
+Button.tsx
+Input.tsx
+/layout/
+Header.tsx
+Footer.tsx
+/form/
+ContactForm.tsx
+CotizarForm.tsx
+/public
+/src
+/blog/*.md
+
+---
+
+## 📐 Reglas de diseño y UI/UX
+
+- Diseño **moderno, limpio, minimalista y mobile-first**
+- Uso intensivo de TailwindCSS para layout, espaciado, tipografía y colores
+- Todos los textos deben venir desde Markdown o props
+- Componentes accesibles (`aria-*`, etiquetas semánticas)
+- Layout base global con `<Header />` y `<Footer />` reutilizables
+- Uso consistente de contenedores semánticos: `<header>`, `<main>`, `<section>`, `<footer>`
+
+---
+
+## 📸 Imágenes
+
+- Servidas desde CDN externo (ej: Cloudflare, Vercel assets)
+- Usar `<Image />` de Next.js con `alt`, tamaños explícitos y optimización automática
+- Activar `next.config.js` con dominios externos y formatos WebP
+
+---
+
+## 🔍 SEO Técnico
+
+- Cada página debe definir: `<title>`, `<meta name="description">`, y metadatos OpenGraph
+- URLs limpias y jerárquicas (`/blog/[slug]`, `/contacto`, etc.)
+- Sitemap automático (`/sitemap.xml`) con rutas públicas
+- Blog en `.md` con `frontmatter` estructurado: title, description, slug, tags, image
+- Usar `<main>` y headings jerárquicos (`<h1>` → `<h2>`, etc.) para mejorar el rastreo
+
+---
+
+## 🧠 Accesibilidad y rendimiento
+
+- Todas las imágenes con `loading="lazy"`
+- Navegación por teclado en formularios y enlaces
+- Colores contrastados (mínimo AA+ WCAG)
+- Usar `rel="noopener noreferrer"` en enlaces externos
+- Carga estática (`SSG`) por defecto, evitar `SSR` salvo justificación clara
+- Formularios con validación visual y funcional
+
+---
+
+## 🛠️ Regla Cursor
+
+- Esta regla se aplica a todos los archivos en:  
+  `frontend/**/*.{js,jsx,ts,tsx}`
+
+- Todos los componentes deben crearse dentro de `/components/`
+- Las páginas públicas deben estar ubicadas dentro de `/app/`
+- No se permite usar `lorem ipsum`: todos los textos deben estar definidos por diseño o por Markdown
+- El código debe mantenerse modular, legible y reutilizable
+- Todos los cambios deben mantener compatibilidad con SEO, accesibilidad y mobile-first
+
+---
+
+## ✅ Buenas prácticas adicionales
+
+- Evitar lógica de negocio en componentes UI (delegar a hooks o servicios)
+- Usar `headlessui`, `@radix-ui/react` o similares para accesibilidad avanzada
+- Usar ESLint + Prettier para mantener coherencia de estilo
+- Animaciones ligeras: usar `framer-motion` si se requiere transiciones suaves
+- Toda navegación interna debe usar `<Link />` de Next.js

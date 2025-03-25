@@ -1,0 +1,581 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: seguridad.mdc
+
+## 🎯 Propósito
+Establecer un conjunto integral de medidas de seguridad para proteger el sitio web y sus usuarios, implementando las mejores prácticas actuales que no sólo mejoren la seguridad, sino que también contribuyan a obtener puntuaciones perfectas en PageSpeed Insights, sin comprometer el rendimiento ni la experiencia de usuario.
+
+---
+
+## 🔒 Headers de seguridad HTTP
+
+### 1. Content Security Policy (CSP)
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // CSP optimizado para rendimiento y seguridad
+  response.headers.set(
+    'Content-Security-Policy',
+    [
+      // Fuentes permitidas por defecto
+      "default-src 'self'",
+      
+      // Estilos permitidos
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      
+      // Scripts permitidos
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com",
+      
+      // Conexiones permitidas
+      "connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://*.cloudflare.com https://*.vercel-insights.com",
+      
+      // Imágenes permitidas
+      "img-src 'self' data: https: blob:",
+      
+      // Fuentes permitidas
+      "font-src 'self' https://fonts.gstatic.com",
+      
+      // Frames permitidos
+      "frame-src 'self'",
+      
+      // Manifiestos permitidos
+      "manifest-src 'self'",
+      
+      // Media permitidos
+      "media-src 'self'",
+      
+      // Workers permitidos
+      "worker-src 'self' blob:",
+    ].join('; ')
+  );
+  
+  return response;
+}
+
+export const config = {
+  matcher: ['/((?!api/|_next/|_static/|_vercel|[\\w-]+\\.\\w+).*)'],
+};
+```
+
+### 2. Headers de seguridad esenciales
+
+```typescript
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          // Prevenir XSS
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+          // Prevenir MIME sniffing
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          // Controlar referrer information
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          // Prevenir clickjacking
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          // Habilitar características de seguridad del navegador
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()',
+          },
+          // HSTS
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+---
+
+## 🔐 Autenticación segura
+
+### 1. Implementación con NextAuth.js
+
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import NextAuth from 'next-auth';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import { PrismaClient } from '@prisma/client';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
+import bcrypt from 'bcryptjs';
+
+const prisma = new PrismaClient();
+
+export const authOptions = {
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
+    }),
+    CredentialsProvider({
+      name: 'Credentials',
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error('Email y contraseña requeridos');
+        }
+        
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        });
+        
+        if (!user || !user.password) {
+          throw new Error('Usuario no encontrado');
+        }
+        
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        
+        if (!isPasswordValid) {
+          throw new Error('Contraseña incorrecta');
+        }
+        
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        };
+      }
+    })
+  ],
+  pages: {
+    signIn: '/auth/login',
+    signOut: '/auth/logout',
+    error: '/auth/error',
+    verifyRequest: '/auth/verify-request',
+    newUser: '/auth/register'
+  },
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  cookies: {
+    sessionToken: {
+      name: `__Secure-next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: true,
+      },
+    },
+  },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.id;
+      }
+      return session;
+    },
+  },
+};
+
+const handler = NextAuth(authOptions);
+
+export { handler as GET, handler as POST };
+```
+
+### 2. Protección de rutas con middleware
+
+```typescript
+// middleware.ts (adicional al CSP)
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Verificar autenticación para rutas protegidas
+  const isAuthRoute = request.nextUrl.pathname.startsWith('/dashboard');
+  const session = request.cookies.get('__Secure-next-auth.session-token');
+  
+  if (isAuthRoute && !session) {
+    return NextResponse.redirect(new URL('/auth/login', request.url));
+  }
+  
+  // Headers de seguridad...
+  
+  return response;
+}
+```
+
+---
+
+## 🛡️ Protección contra ataques comunes
+
+### 1. Sanitización de entrada de datos
+
+```typescript
+// lib/sanitize.ts
+import DOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+
+const window = new JSDOM('').window;
+const purify = DOMPurify(window);
+
+export function sanitizeHtml(dirty: string): string {
+  return purify.sanitize(dirty, {
+    ALLOWED_TAGS: [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'ul', 'ol', 'li',
+      'strong', 'em', 'a', 'img', 'blockquote', 'code', 'pre'
+    ],
+    ALLOWED_ATTR: [
+      'href', 'target', 'rel', 'src', 'alt', 'class', 'id', 'title'
+    ],
+    FORCE_HTTPS: true,
+    FORBID_CONTENTS: ['script', 'style', 'iframe', 'form'],
+  });
+}
+
+export function sanitizeInput(input: string): string {
+  return input.trim()
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+```
+
+### 2. Cloudflare Turnstile (protección contra bots)
+
+```tsx
+// components/security/Turnstile.tsx
+'use client';
+
+import { useRef, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+
+interface TurnstileProps {
+  siteKey: string;
+  onVerify: (token: string) => void;
+  theme?: 'light' | 'dark' | 'auto';
+  className?: string;
+  action?: string;
+}
+
+export function Turnstile({
+  siteKey,
+  onVerify,
+  theme = 'auto',
+  className,
+  action,
+}: TurnstileProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    // Cargar el script de Turnstile
+    if (!window.turnstile) {
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+      
+      return () => {
+        document.head.removeChild(script);
+      };
+    }
+    
+    // Inicializar cuando el script esté cargado
+    const initTurnstile = () => {
+      if (window.turnstile && containerRef.current) {
+        if (widgetIdRef.current) {
+          window.turnstile.remove(widgetIdRef.current);
+        }
+        
+        widgetIdRef.current = window.turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: onVerify,
+          theme: theme,
+          action: action,
+        });
+      }
+    };
+    
+    // Esperar a que el script esté cargado
+    if (window.turnstile) {
+      initTurnstile();
+    } else {
+      const checkTurnstile = setInterval(() => {
+        if (window.turnstile) {
+          clearInterval(checkTurnstile);
+          initTurnstile();
+        }
+      }, 100);
+      
+      return () => clearInterval(checkTurnstile);
+    }
+    
+    return () => {
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(widgetIdRef.current);
+      }
+    };
+  }, [siteKey, onVerify, theme, action]);
+  
+  return <div ref={containerRef} className={cn('my-3', className)} />;
+}
+
+// Declaración de tipos
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          theme?: 'light' | 'dark' | 'auto';
+          action?: string;
+        }
+      ) => string;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
+```
+
+---
+
+## 🔄 CORS y API segura
+
+```typescript
+// app/api/contact/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { sanitizeInput } from '@/lib/sanitize';
+import { verifyTurnstileToken } from '@/lib/turnstile';
+
+// Esquema de validación
+const contactSchema = z.object({
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  message: z.string().min(10).max(1000),
+  captchaToken: z.string().min(1),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    // Rate Limiting con headers de Cloudflare
+    const cfRay = request.headers.get('cf-ray');
+    const cfIp = request.headers.get('cf-connecting-ip');
+    
+    if (!cfRay || !cfIp) {
+      return NextResponse.json(
+        { success: false, message: 'Acceso denegado' },
+        { status: 403 }
+      );
+    }
+    
+    // Verificar CSRF Token
+    const csrfToken = request.headers.get('x-csrf-token');
+    if (!csrfToken || !validateCsrfToken(csrfToken)) {
+      return NextResponse.json(
+        { success: false, message: 'CSRF token inválido' },
+        { status: 403 }
+      );
+    }
+    
+    // Leer y validar datos
+    const body = await request.json();
+    
+    // Validación con Zod
+    const result = contactSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { success: false, message: 'Datos inválidos', errors: result.error.format() },
+        { status: 400 }
+      );
+    }
+    
+    const { name, email, message, captchaToken } = result.data;
+    
+    // Verificar Turnstile/reCAPTCHA
+    const isCaptchaValid = await verifyTurnstileToken(captchaToken);
+    if (!isCaptchaValid) {
+      return NextResponse.json(
+        { success: false, message: 'Verificación de captcha fallida' },
+        { status: 400 }
+      );
+    }
+    
+    // Sanitizar datos
+    const sanitizedData = {
+      name: sanitizeInput(name),
+      email: sanitizeInput(email),
+      message: sanitizeInput(message),
+    };
+    
+    // Enviar a servicio externo (ejemplo con webhook)
+    const webhookResponse = await fetch(process.env.CONTACT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.WEBHOOK_API_KEY,
+      },
+      body: JSON.stringify({
+        ...sanitizedData,
+        timestamp: new Date().toISOString(),
+        source: 'website-contact',
+      }),
+    });
+    
+    if (!webhookResponse.ok) {
+      throw new Error('Error al procesar la solicitud');
+    }
+    
+    return NextResponse.json(
+      { success: true, message: 'Mensaje enviado correctamente' },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Error en API de contacto:', error);
+    return NextResponse.json(
+      { success: false, message: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+// Función de validación CSRF
+function validateCsrfToken(token: string): boolean {
+  // Implementación de validación CSRF
+  // En producción, validar contra un token generado previamente
+  return token.length > 0;
+}
+```
+
+---
+
+## 📦 Protección de dependencias vulnerables
+
+```yaml
+# .github/workflows/security-scan.yml
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Escaneo semanal los domingos
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+      
+      - name: OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'my-website'
+          path: '.'
+          format: 'HTML'
+          out: 'reports'
+      
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: reports/dependency-check-report.html
+      
+      - name: Snyk Code Security Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: code test
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Implementar todos los headers de seguridad en `next.config.js` y `middleware.ts`
+- Sanitizar todas las entradas de usuario antes de procesar o almacenar datos
+- Utilizar CSP restrictivas y bien configuradas para prevenir XSS
+- Implementar protección contra bots usando Cloudflare Turnstile o reCAPTCHA
+- Usar `httpOnly`, `secure` y `SameSite` en todas las cookies sensibles
+- Validar toda entrada con Zod o similar antes de procesar (frontend y backend)
+- No permitir la inserción de HTML sin sanitización previa (usar DOMPurify)
+- Implementar CSRF protection en todos los formularios
+- Usar Cloudflare o un WAF para protección adicional
+- Ejecutar auditorías periódicas de dependencias
+
+---
+
+## 📋 Checklist de seguridad
+
+- [ ] Headers HTTP de seguridad implementados
+- [ ] CSP restrictivo configurado
+- [ ] HTTPS forzado (HSTS)
+- [ ] Autenticación segura con tokens JWT o cookies firmadas
+- [ ] Sanitización de todas las entradas de usuario
+- [ ] Protección contra CSRF
+- [ ] Protección contra bots (CAPTCHA/Turnstile)
+- [ ] Validación de datos con Zod o similar
+- [ ] API con rate limiting
+- [ ] Auditoría de dependencias
+- [ ] Protección contra clickjacking (X-Frame-Options)
+- [ ] Escaneo automático de vulnerabilidades
+- [ ] Uso de CORS adecuado
+- [ ] Manejo seguro de secretos (variables de entorno)
+- [ ] Logging seguro sin datos sensibles

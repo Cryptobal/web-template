@@ -1,0 +1,1164 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: componentes-ux.mdc
+
+## 🎯 Propósito
+Establecer un conjunto de componentes de interfaz de usuario (UI) y experiencia de usuario (UX) optimizados para Core Web Vitals que garanticen una puntuación perfecta de 100 en PageSpeed Insights, asegurando una experiencia de usuario excepcional en todos los dispositivos, con énfasis en accesibilidad, rendimiento y diseño mobile-first.
+
+---
+
+## 🧩 Principios fundamentales
+
+### 1. Core Web Vitals
+Todos los componentes deben estar optimizados para estos tres indicadores clave:
+
+| Métrica | Objetivo | Estrategia |
+|---------|----------|------------|
+| LCP (Largest Contentful Paint) | < 2.5s | Carga prioritaria, imágenes optimizadas |
+| FID (First Input Delay) | < 100ms | Minimizar JS bloqueante, lazy load |
+| CLS (Cumulative Layout Shift) | < 0.1 | Dimensiones predefinidas, skeleton loaders |
+
+### 2. Estrategia mobile-first
+
+- Diseño adaptativo desde 320px (iPhone SE) hasta 1920px+ (pantallas grandes)
+- Optimización de Touch Targets (mínimo 44x44px para elementos interactivos)
+- Rendimiento optimizado para conexiones 3G/4G
+
+### 3. Accesibilidad (WCAG AA+)
+
+- Contraste mínimo 4.5:1 para texto normal, 3:1 para texto grande
+- Navegación completa por teclado y lectores de pantalla
+- Estructura semántica con landmarks ARIA
+
+---
+
+## 📦 Componentes base optimizados
+
+### 1. OptimizedImage
+
+```tsx
+// components/ui/OptimizedImage.tsx
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { cn } from '@/lib/utils';
+
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  priority?: boolean;
+  className?: string;
+  fill?: boolean;
+  sizes?: string;
+  quality?: number;
+}
+
+export function OptimizedImage({
+  src,
+  alt,
+  width,
+  height,
+  priority = false,
+  className,
+  fill = false,
+  sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw',
+  quality = 85,
+}: OptimizedImageProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Calcular aspect ratio para evitar CLS
+  const aspectRatio = width && height ? width / height : undefined;
+  
+  // Detectar si la imagen debe ser LCP y cargarla con prioridad
+  useEffect(() => {
+    const isLCP = window.innerHeight > 0 && 
+      (width * height) / (window.innerWidth * window.innerHeight) > 0.25;
+    
+    if (isLCP && !priority) {
+      console.warn(`Consider setting priority={true} for this large image: ${src}`);
+    }
+  }, [src, width, height, priority]);
+  
+  return (
+    <div 
+      className={cn(
+        'overflow-hidden bg-neutral-100 dark:bg-neutral-800 relative',
+        isLoaded ? 'bg-transparent' : '',
+        className
+      )}
+      style={!fill && aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
+    >
+      {/* Skeleton loader */}
+      {!isLoaded && (
+        <div 
+          className="absolute inset-0 animate-pulse bg-neutral-200 dark:bg-neutral-700"
+          aria-hidden="true"
+        />
+      )}
+      
+      <Image
+        src={src}
+        alt={alt}
+        width={!fill ? width : undefined}
+        height={!fill ? height : undefined}
+        fill={fill}
+        sizes={sizes}
+        quality={quality}
+        priority={priority}
+        loading={priority ? 'eager' : 'lazy'}
+        onLoadingComplete={() => setIsLoaded(true)}
+        className={cn(
+          'transition-opacity duration-300 ease-in-out',
+          fill ? 'object-cover' : '',
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        )}
+      />
+      
+      {/* No-JS fallback */}
+      <noscript>
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className="w-full h-auto"
+        />
+      </noscript>
+    </div>
+  );
+}
+```
+
+### 2. Button (accesible)
+
+```tsx
+// components/ui/Button.tsx
+import React from 'react';
+import { cn } from '@/lib/utils';
+import { Loader } from './Loader';
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'link';
+  size?: 'sm' | 'md' | 'lg';
+  loading?: boolean;
+  fullWidth?: boolean;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
+}
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({
+    children,
+    className,
+    variant = 'primary',
+    size = 'md',
+    disabled,
+    loading = false,
+    fullWidth = false,
+    type = 'button',
+    leftIcon,
+    rightIcon,
+    ...props
+  }, ref) => {
+    const isDisabled = disabled || loading;
+    
+    // Map size to padding and text size
+    const sizeStyles = {
+      sm: 'py-1.5 px-3 text-sm',
+      md: 'py-2 px-4 text-base',
+      lg: 'py-3 px-6 text-lg',
+    };
+    
+    // Map variant to styles
+    const variantStyles = {
+      primary: 'bg-primary text-white hover:bg-primary-dark focus:ring-primary/25',
+      secondary: 'bg-secondary text-white hover:bg-secondary-dark focus:ring-secondary/25',
+      outline: 'border border-primary text-primary hover:bg-primary/10 focus:ring-primary/25',
+      ghost: 'text-primary hover:bg-primary/10 focus:ring-primary/25',
+      link: 'text-primary underline hover:text-primary-dark focus:ring-primary/25 p-0',
+    };
+    
+    return (
+      <button
+        ref={ref}
+        type={type}
+        disabled={isDisabled}
+        className={cn(
+          // Base styles
+          'font-medium rounded-md inline-flex items-center justify-center',
+          'transition-colors duration-150 ease-in-out',
+          'focus:outline-none focus:ring-4',
+          'disabled:opacity-60 disabled:cursor-not-allowed',
+          // Dynamic styles based on props
+          sizeStyles[size],
+          variantStyles[variant],
+          fullWidth ? 'w-full' : '',
+          variant !== 'link' ? 'shadow-sm' : '',
+          className
+        )}
+        {...props}
+      >
+        {loading && (
+          <Loader
+            size={size === 'sm' ? 16 : size === 'md' ? 20 : 24}
+            className="mr-2"
+          />
+        )}
+        {!loading && leftIcon && (
+          <span className="mr-2 inline-flex">{leftIcon}</span>
+        )}
+        <span>{children}</span>
+        {!loading && rightIcon && (
+          <span className="ml-2 inline-flex">{rightIcon}</span>
+        )}
+      </button>
+    );
+  }
+);
+
+Button.displayName = 'Button';
+```
+
+### 3. Accordion (optimizado para CLS)
+
+```tsx
+// components/ui/Accordion.tsx
+import React, { useState } from 'react';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { cn } from '@/lib/utils';
+
+interface AccordionItemProps {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+}
+
+export function AccordionItem({
+  title,
+  children,
+  defaultOpen = false,
+  className,
+}: AccordionItemProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const id = React.useId();
+  const headingId = `${id}-heading`;
+  const panelId = `${id}-panel`;
+  
+  return (
+    <div className={cn('border-b border-neutral-200 dark:border-neutral-700', className)}>
+      <h3>
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          aria-controls={panelId}
+          id={headingId}
+          className={cn(
+            'flex w-full items-center justify-between py-4 px-1 text-left font-medium',
+            'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2',
+            'hover:text-primary transition-colors duration-150'
+          )}
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <span>{title}</span>
+          <ChevronDownIcon
+            className={cn(
+              'h-5 w-5 text-primary transition-transform duration-200',
+              isOpen ? 'rotate-180' : ''
+            )}
+          />
+        </button>
+      </h3>
+      
+      {/* Pre-render pero ocultar para evitar CLS */}
+      <div
+        id={panelId}
+        aria-labelledby={headingId}
+        role="region"
+        className={cn(
+          'overflow-hidden transition-all duration-200 ease-in-out',
+          isOpen ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0 invisible'
+        )}
+      >
+        <div className="pb-4 pt-1 px-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+interface AccordionProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function Accordion({ children, className }: AccordionProps) {
+  return (
+    <div className={cn('rounded-lg border border-neutral-200 dark:border-neutral-700', className)}>
+      {children}
+    </div>
+  );
+}
+```
+
+### 4. Card (optimizado para mobile-first)
+
+```tsx
+// components/ui/Card.tsx
+import React from 'react';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
+import { OptimizedImage } from './OptimizedImage';
+
+interface CardProps {
+  title: string;
+  description: string;
+  href?: string;
+  imageSrc?: string;
+  imageAlt?: string;
+  footer?: React.ReactNode;
+  className?: string;
+  imageSize?: 'sm' | 'md' | 'lg';
+  variant?: 'filled' | 'outline' | 'ghost';
+  isExternal?: boolean;
+}
+
+export function Card({
+  title,
+  description,
+  href,
+  imageSrc,
+  imageAlt = '',
+  footer,
+  className,
+  imageSize = 'md',
+  variant = 'filled',
+  isExternal = false,
+}: CardProps) {
+  // Dimensiones predefinidas para imágenes según el tamaño
+  const imageDimensions = {
+    sm: { width: 400, height: 200 },
+    md: { width: 600, height: 300 },
+    lg: { width: 800, height: 400 },
+  };
+  
+  // Estilos según variante
+  const variantStyles = {
+    filled: 'bg-white dark:bg-neutral-800 shadow-md',
+    outline: 'border border-neutral-200 dark:border-neutral-700',
+    ghost: 'hover:bg-neutral-50 dark:hover:bg-neutral-900',
+  };
+  
+  const CardContent = () => (
+    <>
+      {imageSrc && (
+        <div className="overflow-hidden rounded-t-lg">
+          <OptimizedImage
+            src={imageSrc}
+            alt={imageAlt}
+            width={imageDimensions[imageSize].width}
+            height={imageDimensions[imageSize].height}
+            className="w-full transition-transform duration-300 group-hover:scale-105"
+          />
+        </div>
+      )}
+      <div className="p-4">
+        <h3 className="text-lg font-semibold mb-2">{title}</h3>
+        <p className="text-neutral-600 dark:text-neutral-300 mb-4">{description}</p>
+        {footer && <div className="mt-auto pt-2">{footer}</div>}
+      </div>
+    </>
+  );
+  
+  return (
+    <div 
+      className={cn(
+        'rounded-lg overflow-hidden flex flex-col group',
+        'transition-all duration-200 ease-in-out',
+        variant !== 'ghost' ? 'hover:shadow-lg' : '',
+        variantStyles[variant],
+        className
+      )}
+    >
+      {href ? (
+        <Link 
+          href={href}
+          className="flex flex-col h-full"
+          {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+        >
+          <CardContent />
+        </Link>
+      ) : (
+        <CardContent />
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 📱 Componentes específicos para mobile
+
+### 1. BottomNavigation
+
+```tsx
+// components/mobile/BottomNavigation.tsx
+import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+}
+
+interface BottomNavigationProps {
+  items: NavItem[];
+  className?: string;
+}
+
+export function BottomNavigation({ items, className }: BottomNavigationProps) {
+  const pathname = usePathname();
+  
+  return (
+    <nav 
+      className={cn(
+        'fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-neutral-900',
+        'border-t border-neutral-200 dark:border-neutral-800',
+        'sm:hidden', // Ocultar en pantallas > sm
+        className
+      )}
+    >
+      <ul className="flex justify-around items-center h-16">
+        {items.map((item) => {
+          const isActive = pathname === item.href;
+          
+          return (
+            <li key={item.href} className="w-full">
+              <Link
+                href={item.href}
+                className={cn(
+                  'flex flex-col items-center justify-center h-full px-2',
+                  'transition-colors duration-150',
+                  isActive
+                    ? 'text-primary'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-primary dark:hover:text-primary'
+                )}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <span className="h-6 w-6">{item.icon}</span>
+                <span className="text-xs mt-1">{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+```
+
+### 2. MobileMenu (accesible)
+
+```tsx
+// components/mobile/MobileMenu.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+import { XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import FocusTrap from 'focus-trap-react';
+import { useRouter } from 'next/navigation';
+
+interface MenuLink {
+  label: string;
+  href: string;
+  submenu?: MenuLink[];
+}
+
+interface MobileMenuProps {
+  links: MenuLink[];
+  logo: React.ReactNode;
+  className?: string;
+}
+
+export function MobileMenu({ links, logo, className }: MobileMenuProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  
+  // Cerrar menú al navegar
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setIsOpen(false);
+    };
+    
+    window.addEventListener('popstate', handleRouteChange);
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, [router]);
+  
+  // Prevenir scroll cuando el menú está abierto
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.paddingRight = '15px'; // Compensar scrollbar
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    };
+  }, [isOpen]);
+  
+  const toggleSubmenu = (label: string) => {
+    setExpandedItems((prev) => 
+      prev.includes(label)
+        ? prev.filter(item => item !== label)
+        : [...prev, label]
+    );
+  };
+  
+  return (
+    <div className={className}>
+      {/* Barra superior */}
+      <div className="flex items-center justify-between p-4">
+        {logo}
+        
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          aria-controls="mobile-menu"
+          aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
+          className={cn(
+            'p-2 text-neutral-600 dark:text-neutral-300',
+            'focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-md',
+            'lg:hidden'
+          )}
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          {isOpen ? (
+            <XMarkIcon className="h-6 w-6" />
+          ) : (
+            <Bars3Icon className="h-6 w-6" />
+          )}
+        </button>
+      </div>
+      
+      {/* Menú desplegable */}
+      <div
+        id="mobile-menu-overlay"
+        className={cn(
+          'fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300',
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        )}
+        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+      />
+      
+      <FocusTrap active={isOpen}>
+        <div
+          id="mobile-menu"
+          ref={menuRef}
+          className={cn(
+            'fixed top-0 right-0 bottom-0 z-50 w-80 max-w-[80vw]',
+            'bg-white dark:bg-neutral-900 shadow-xl',
+            'transition-transform duration-300 ease-in-out lg:hidden',
+            'flex flex-col',
+            isOpen ? 'translate-x-0' : 'translate-x-full'
+          )}
+        >
+          <div className="flex justify-end p-4">
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              className="p-2 text-neutral-600 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-md"
+              onClick={() => setIsOpen(false)}
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
+          
+          <nav className="flex-1 overflow-y-auto px-4 py-2">
+            <ul className="space-y-1">
+              {links.map((link) => (
+                <li key={link.label}>
+                  {link.submenu ? (
+                    <div className="py-2">
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex items-center justify-between w-full px-3 py-2 rounded-md',
+                          'text-left font-medium text-neutral-800 dark:text-neutral-200',
+                          'focus:outline-none focus:ring-2 focus:ring-primary/50',
+                          expandedItems.includes(link.label)
+                            ? 'bg-neutral-100 dark:bg-neutral-800'
+                            : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                        )}
+                        onClick={() => toggleSubmenu(link.label)}
+                        aria-expanded={expandedItems.includes(link.label)}
+                      >
+                        <span>{link.label}</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className={cn(
+                            "h-5 w-5 transition-transform",
+                            expandedItems.includes(link.label) && "rotate-180"
+                          )}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                      
+                      {/* Submenú */}
+                      <div
+                        className={cn(
+                          'mt-1 overflow-hidden transition-all duration-200 ease-in-out',
+                          expandedItems.includes(link.label)
+                            ? 'max-h-96 opacity-100'
+                            : 'max-h-0 opacity-0'
+                        )}
+                      >
+                        <ul className="pl-4 space-y-1 py-1">
+                          {link.submenu.map((subItem) => (
+                            <li key={subItem.label}>
+                              <a
+                                href={subItem.href}
+                                className="block px-3 py-2 rounded-md text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                                onClick={() => setIsOpen(false)}
+                              >
+                                {subItem.label}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="block px-3 py-2 rounded-md text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 font-medium"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      {link.label}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+      </FocusTrap>
+    </div>
+  );
+}
+```
+
+---
+
+## 🔄 Loaders optimizados (evitar CLS)
+
+### 1. SkeletonLoader
+
+```tsx
+// components/ui/SkeletonLoader.tsx
+import { cn } from '@/lib/utils';
+
+interface SkeletonProps {
+  className?: string;
+  width?: string | number;
+  height?: string | number;
+  borderRadius?: string;
+  animate?: boolean;
+}
+
+export function Skeleton({
+  className,
+  width,
+  height,
+  borderRadius = '0.25rem',
+  animate = true,
+}: SkeletonProps) {
+  return (
+    <div
+      className={cn(
+        'bg-neutral-200 dark:bg-neutral-700',
+        animate && 'animate-pulse',
+        className
+      )}
+      style={{
+        width,
+        height,
+        borderRadius,
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
+// Card skeleton
+export function CardSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700',
+        className
+      )}
+    >
+      <Skeleton height={200} className="w-full" borderRadius="0" />
+      <div className="p-4">
+        <Skeleton width="80%" height="1.5rem" className="mb-3" />
+        <Skeleton width="90%" height="1rem" className="mb-2" />
+        <Skeleton width="60%" height="1rem" className="mb-4" />
+        <Skeleton width="40%" height="2rem" />
+      </div>
+    </div>
+  );
+}
+
+// Grid skeleton
+export function GridSkeleton({
+  items = 6,
+  columns = 3,
+  className,
+}: {
+  items?: number;
+  columns?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'grid gap-4',
+        columns === 1 && 'grid-cols-1',
+        columns === 2 && 'grid-cols-1 sm:grid-cols-2',
+        columns === 3 && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+        columns === 4 && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
+        className
+      )}
+    >
+      {Array.from({ length: items }).map((_, index) => (
+        <CardSkeleton key={index} />
+      ))}
+    </div>
+  );
+}
+```
+
+### 2. SpinnerLoader 
+
+```tsx
+// components/ui/Loader.tsx
+import { cn } from '@/lib/utils';
+
+interface LoaderProps {
+  size?: number;
+  className?: string;
+  thickness?: number;
+  color?: string;
+}
+
+export function Loader({
+  size = 24,
+  className,
+  thickness = 2,
+  color,
+}: LoaderProps) {
+  return (
+    <div
+      className={cn(
+        'inline-block animate-spin rounded-full border-transparent',
+        !color && 'border-t-primary border-r-primary',
+        'border-b-transparent border-l-transparent',
+        className
+      )}
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderWidth: `${thickness}px`,
+        borderColor: color ? `transparent ${color} transparent transparent` : undefined,
+      }}
+      role="status"
+      aria-label="Cargando"
+    >
+      <span className="sr-only">Cargando...</span>
+    </div>
+  );
+}
+
+export function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[200px] w-full">
+      <Loader size={40} thickness={3} />
+    </div>
+  );
+}
+```
+
+---
+
+## 🎨 Transiciones y animaciones optimizadas
+
+### 1. AnimatedContent (lazy loaded)
+
+```tsx
+// components/ui/AnimatedContent.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
+
+interface AnimatedContentProps {
+  children: React.ReactNode;
+  animation?: 'fade-in' | 'slide-up' | 'scale-in' | 'none';
+  delay?: number;
+  duration?: number;
+  threshold?: number;
+  className?: string;
+  once?: boolean;
+}
+
+export function AnimatedContent({
+  children,
+  animation = 'fade-in',
+  delay = 0,
+  duration = 500,
+  threshold = 0.1,
+  className,
+  once = true,
+}: AnimatedContentProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const elementRef = useRef<HTMLDivElement>(null);
+  
+  // Solo animar en el cliente para evitar problemas de hidratación
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
+  useEffect(() => {
+    if (!isMounted) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          // Si necesitamos observar múltiples veces o solo una vez
+          if (entry.isIntersecting && (!once || !hasAnimated)) {
+            setIsVisible(true);
+            if (once) setHasAnimated(true);
+          } else if (!once) {
+            setIsVisible(false);
+          }
+        });
+      },
+      { threshold }
+    );
+    
+    const currentElement = elementRef.current;
+    
+    if (currentElement) {
+      observer.observe(currentElement);
+    }
+    
+    return () => {
+      if (currentElement) {
+        observer.unobserve(currentElement);
+      }
+    };
+  }, [threshold, once, hasAnimated, isMounted]);
+  
+  // Mapeo de animaciones a estilos de CSS
+  const animationStyles = {
+    'fade-in': 'opacity-0 motion-safe:transition-opacity',
+    'slide-up': 'opacity-0 translate-y-8 motion-safe:transition-all',
+    'scale-in': 'opacity-0 scale-95 motion-safe:transition-all',
+    'none': '',
+  };
+  
+  // Desactivar animaciones si el usuario prefiere reducir el movimiento
+  const prefersReducedMotion = isMounted && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  
+  return (
+    <div
+      ref={elementRef}
+      className={cn(
+        // Aplicar estilo base de animación
+        !prefersReducedMotion && animationStyles[animation],
+        // Aplicar estilos cuando es visible
+        isVisible
+          ? 'opacity-100 translate-y-0 scale-100'
+          : '',
+        className
+      )}
+      style={{
+        transitionDuration: `${duration}ms`,
+        transitionDelay: `${delay}ms`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+```
+
+### 2. PageTransition
+
+```tsx
+// components/ui/PageTransition.tsx
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface PageTransitionProps {
+  children: React.ReactNode;
+}
+
+export function PageTransition({ children }: PageTransitionProps) {
+  const pathname = usePathname();
+  
+  // Solo aplicar transiciones de página en entornos que lo soportan
+  const prefersReducedMotion = 
+    typeof window !== 'undefined' && 
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  
+  if (prefersReducedMotion) {
+    return <>{children}</>;
+  }
+  
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={pathname}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 20 }}
+        transition={{
+          duration: 0.2,
+          ease: 'easeInOut',
+        }}
+        className="h-full"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+```
+
+---
+
+## 🖋️ Tipografía optimizada
+
+```tsx
+// components/ui/Typography.tsx
+import { cn } from '@/lib/utils';
+
+interface TypographyProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function H1({ children, className }: TypographyProps) {
+  return (
+    <h1 
+      className={cn(
+        'scroll-m-20 text-4xl font-extrabold tracking-tight md:text-5xl',
+        'text-balance',
+        className
+      )}
+    >
+      {children}
+    </h1>
+  );
+}
+
+export function H2({ children, className }: TypographyProps) {
+  return (
+    <h2 
+      className={cn(
+        'scroll-m-20 text-3xl font-semibold tracking-tight',
+        'first:mt-0 mt-10 mb-4',
+        'text-balance',
+        className
+      )}
+    >
+      {children}
+    </h2>
+  );
+}
+
+export function H3({ children, className }: TypographyProps) {
+  return (
+    <h3 
+      className={cn(
+        'scroll-m-20 text-2xl font-semibold tracking-tight',
+        'text-balance',
+        className
+      )}
+    >
+      {children}
+    </h3>
+  );
+}
+
+export function P({ children, className }: TypographyProps) {
+  return (
+    <p className={cn('leading-7 [&:not(:first-child)]:mt-6', className)}>
+      {children}
+    </p>
+  );
+}
+
+export function Lead({ children, className }: TypographyProps) {
+  return (
+    <p className={cn('text-xl text-neutral-600 dark:text-neutral-400', className)}>
+      {children}
+    </p>
+  );
+}
+
+export function Large({ children, className }: TypographyProps) {
+  return (
+    <div className={cn('text-lg font-semibold', className)}>
+      {children}
+    </div>
+  );
+}
+
+export function Small({ children, className }: TypographyProps) {
+  return (
+    <small className={cn('text-sm font-medium leading-none', className)}>
+      {children}
+    </small>
+  );
+}
+```
+
+---
+
+## 🌙 Soporte para Dark Mode
+
+```tsx
+// components/ui/ThemeToggle.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
+import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
+import { cn } from '@/lib/utils';
+
+interface ThemeToggleProps {
+  className?: string;
+}
+
+export function ThemeToggle({ className }: ThemeToggleProps) {
+  const [mounted, setMounted] = useState(false);
+  const { theme, setTheme } = useTheme();
+  
+  // Solo mostrar el componente después de montar
+  // para evitar hidratación incorrecta
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return <div className="w-9 h-9" aria-hidden="true" />;
+  }
+  
+  return (
+    <button
+      type="button"
+      aria-label={
+        theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'
+      }
+      className={cn(
+        'p-2 rounded-md transition-colors',
+        'text-neutral-600 dark:text-neutral-400',
+        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+        'focus:outline-none focus:ring-2 focus:ring-primary/50',
+        className
+      )}
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+    >
+      {theme === 'dark' ? (
+        <SunIcon className="h-5 w-5" />
+      ) : (
+        <MoonIcon className="h-5 w-5" />
+      )}
+    </button>
+  );
+}
+```
+
+### Configuración en Layout
+
+```tsx
+// app/layout.tsx
+import { ThemeProvider } from '@/components/theme-provider';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+
+const fontSans = GeistSans;
+const fontMono = GeistMono;
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es" suppressHydrationWarning>
+      <head />
+      <body
+        className={cn(
+          'min-h-screen bg-white font-sans antialiased',
+          'text-neutral-900 dark:text-neutral-50 dark:bg-neutral-900',
+          fontSans.variable,
+          fontMono.variable
+        )}
+      >
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (UI/UX)
+
+- Usar componentes optimizados para Core Web Vitals (LCP, FID, CLS)
+- Implementar Skeleton Loaders para prevenir CLS
+- Precargar imágenes críticas (LCP) con priority={true}
+- Aplicar la estrategia mobile-first en todos los componentes
+- Implementar dark mode con detección automática de preferencias
+- Optimizar interacciones para evitar layout shifts durante las animaciones
+- Reducir el tamaño del JavaScript con code-splitting y lazy loading
+- Usar fuentes system o fuentes web optimizadas con preload
+- Implementar preferencias de movimiento reducido (prefers-reduced-motion)
+- Asegurar que todos los componentes sean accesibles vía teclado y lectores de pantalla

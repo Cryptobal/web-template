@@ -1,0 +1,1236 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: consent-manager.mdc
+
+## 🎯 Propósito
+Implementar un sistema de gestión de consentimiento de cookies que cumpla con las regulaciones de privacidad globales (GDPR, CCPA, LGPD) mientras mantiene un rendimiento óptimo en PageSpeed Insights. El sistema debe ser ligero, accesible, personalizable y capaz de manejar diferentes tipos de cookies y permisos de manera granular, todo sin impactar negativamente en la experiencia del usuario y la velocidad del sitio.
+
+---
+
+## 🌐 Cumplimiento normativo
+
+### 1. Regulaciones principales soportadas
+
+| Regulación | Región | Características principales |
+|------------|--------|----------------------------|
+| GDPR | Unión Europea | Consentimiento explícito, derecho al olvido, opciones granulares |
+| CCPA/CPRA | California, EE.UU. | Opción de rechazo, información sobre venta de datos |
+| LGPD | Brasil | Similar a GDPR, consentimiento explícito |
+| PECR | Reino Unido | Complementa al UK GDPR, enfocado en comunicaciones electrónicas |
+| ePrivacy | Unión Europea | Complementa GDPR, específico para comunicaciones electrónicas |
+
+### 2. Requisitos mínimos de cumplimiento
+
+- Solicitar consentimiento antes de cargar cookies no esenciales
+- Permitir rechazo de cookies tan fácilmente como la aceptación
+- Explicar claramente el propósito de cada categoría de cookies
+- Proporcionar mecanismo para retirar el consentimiento
+- Mantener registros de cuándo y cómo se dio el consentimiento
+- Renovar el consentimiento periódicamente (recomendado cada 6-12 meses)
+- Adaptar el comportamiento según la ubicación geográfica del usuario
+
+---
+
+## 🔍 Gestión por categorías
+
+### 1. Categorías estándar de cookies
+
+```typescript
+// types/consent.ts
+export type CookieCategory = 
+  | 'necessary' 
+  | 'preferences' 
+  | 'analytics' 
+  | 'marketing' 
+  | 'unclassified';
+
+export interface CookieInfo {
+  name: string;
+  domain: string;
+  duration: string;
+  description: string;
+  category: CookieCategory;
+  provider: string;
+}
+
+export interface ConsentOptions {
+  necessary: boolean;  // Siempre true, no se puede desactivar
+  preferences: boolean;
+  analytics: boolean;
+  marketing: boolean;
+  unclassified: boolean;
+}
+```
+
+### 2. Sistema de permisos
+
+```typescript
+// lib/consent-manager.ts
+import Cookies from 'js-cookie';
+import { ConsentOptions } from '@/types/consent';
+
+const CONSENT_COOKIE_NAME = 'user_consent';
+const CONSENT_VERSION = '1.0.0';
+const CONSENT_EXPIRY_DAYS = 180; // 6 meses
+
+// Valores por defecto - lo más restrictivo por defecto (privacy by default)
+const DEFAULT_CONSENT_OPTIONS: ConsentOptions = {
+  necessary: true,   // Siempre activado
+  preferences: false,
+  analytics: false,
+  marketing: false,
+  unclassified: false,
+};
+
+export interface ConsentData extends ConsentOptions {
+  timestamp: number;
+  version: string;
+}
+
+// Guardar consentimiento
+export function saveConsent(options: Partial<ConsentOptions>) {
+  // Combinar con valores por defecto
+  const consentData: ConsentData = {
+    ...DEFAULT_CONSENT_OPTIONS,
+    ...options,
+    necessary: true, // Siempre asegurar que necessary está activado
+    timestamp: Date.now(),
+    version: CONSENT_VERSION,
+  };
+  
+  // Guardar en cookie
+  Cookies.set(CONSENT_COOKIE_NAME, JSON.stringify(consentData), {
+    expires: CONSENT_EXPIRY_DAYS,
+    sameSite: 'Lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  });
+  
+  // Devolver los valores actualizados
+  return consentData;
+}
+
+// Obtener estado de consentimiento actual
+export function getConsent(): ConsentData | null {
+  try {
+    const consentCookie = Cookies.get(CONSENT_COOKIE_NAME);
+    
+    if (!consentCookie) {
+      return null;
+    }
+    
+    const consentData = JSON.parse(consentCookie) as ConsentData;
+    
+    // Verificar si la versión es la actual, si no, considerar inválido
+    if (consentData.version !== CONSENT_VERSION) {
+      return null;
+    }
+    
+    return consentData;
+  } catch (error) {
+    console.error('Error parsing consent cookie:', error);
+    return null;
+  }
+}
+
+// Verificar si una categoría específica está permitida
+export function hasConsent(category: keyof ConsentOptions): boolean {
+  // Las cookies necesarias siempre están permitidas
+  if (category === 'necessary') {
+    return true;
+  }
+  
+  const consent = getConsent();
+  
+  // Si no hay consentimiento, denegar todo excepto lo necesario
+  if (!consent) {
+    return false;
+  }
+  
+  return !!consent[category];
+}
+
+// Eliminar consentimiento
+export function removeConsent() {
+  Cookies.remove(CONSENT_COOKIE_NAME, { path: '/' });
+}
+```
+
+---
+
+## 📚 Componentes del sistema
+
+### 1. Banner principal de consentimiento
+
+```tsx
+// components/consent/ConsentBanner.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { getConsent, saveConsent } from '@/lib/consent-manager';
+import { ConsentOptions } from '@/types/consent';
+import { Button } from '@/components/ui/Button';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
+interface ConsentBannerProps {
+  className?: string;
+}
+
+export function ConsentBanner({ className }: ConsentBannerProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [options, setOptions] = useState<ConsentOptions>({
+    necessary: true,
+    preferences: false,
+    analytics: false,
+    marketing: false,
+    unclassified: false,
+  });
+  const router = useRouter();
+  
+  // Comprobar si necesitamos mostrar el banner al cargar
+  useEffect(() => {
+    const existingConsent = getConsent();
+    if (!existingConsent) {
+      setIsVisible(true);
+    }
+  }, []);
+  
+  // Manejar aceptación de todas las cookies
+  const handleAcceptAll = () => {
+    saveConsent({
+      necessary: true,
+      preferences: true,
+      analytics: true,
+      marketing: true,
+      unclassified: true,
+    });
+    
+    setIsVisible(false);
+    window.location.reload(); // Recargar para activar scripts
+  };
+  
+  // Manejar selección personalizada
+  const handleCustomize = () => {
+    setIsExpanded(!isExpanded);
+  };
+  
+  // Manejar rechazo de cookies opcionales
+  const handleRejectOptional = () => {
+    saveConsent({
+      necessary: true,
+      preferences: false,
+      analytics: false,
+      marketing: false,
+      unclassified: false,
+    });
+    
+    setIsVisible(false);
+  };
+  
+  // Manejar cambio en opciones individuales
+  const handleOptionChange = (category: keyof ConsentOptions) => {
+    setOptions(prev => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  };
+  
+  // Guardar preferencias personalizadas
+  const handleSavePreferences = () => {
+    saveConsent(options);
+    setIsVisible(false);
+    window.location.reload(); // Recargar para activar/desactivar scripts
+  };
+  
+  // No renderizar nada si el banner no debe mostrarse
+  if (!isVisible) {
+    return null;
+  }
+  
+  return (
+    <div 
+      className={cn(
+        'fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-neutral-800 shadow-lg',
+        'p-4 border-t border-neutral-200 dark:border-neutral-700',
+        'transition-all duration-300 ease-in-out',
+        isExpanded ? 'max-h-[80vh] overflow-y-auto' : 'max-h-[200px]',
+        className
+      )}
+      role="dialog"
+      aria-labelledby="cookie-consent-title"
+      aria-describedby="cookie-consent-description"
+    >
+      <div className="container mx-auto">
+        <div className="flex flex-col gap-4">
+          <div>
+            <h2 
+              id="cookie-consent-title"
+              className="text-lg font-semibold mb-2"
+            >
+              🍪 Gestión de cookies y privacidad
+            </h2>
+            <p
+              id="cookie-consent-description" 
+              className="text-neutral-600 dark:text-neutral-300 text-sm"
+            >
+              Utilizamos cookies para mejorar su experiencia en nuestro sitio web. Algunas son necesarias para el funcionamiento del sitio, mientras que otras nos ayudan a entender cómo lo utiliza.
+            </p>
+          </div>
+          
+          {/* Panel de opciones expandible */}
+          {isExpanded && (
+            <div className="border rounded-md p-4 bg-neutral-50 dark:bg-neutral-900">
+              <div className="space-y-3">
+                {/* Cookies necesarias - siempre activado */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Cookies necesarias</h3>
+                    <p className="text-sm text-neutral-500">Esenciales para el funcionamiento del sitio</p>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs text-neutral-500 mr-2">Siempre activas</span>
+                    <div className="h-6 w-12 bg-primary rounded-full relative">
+                      <span className="absolute right-1 top-1 h-4 w-4 bg-white rounded-full"></span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Cookies de preferencias */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Cookies de preferencias</h3>
+                    <p className="text-sm text-neutral-500">Permiten recordar sus preferencias</p>
+                  </div>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleOptionChange('preferences')}
+                      className={cn(
+                        'h-6 w-12 rounded-full relative transition-colors',
+                        options.preferences ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-600'
+                      )}
+                      aria-checked={options.preferences}
+                      role="switch"
+                    >
+                      <span 
+                        className={cn(
+                          'absolute top-1 h-4 w-4 bg-white rounded-full transition-transform',
+                          options.preferences ? 'right-1' : 'left-1'
+                        )}
+                      ></span>
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Cookies analíticas */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Cookies analíticas</h3>
+                    <p className="text-sm text-neutral-500">Nos ayudan a entender cómo usa el sitio</p>
+                  </div>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleOptionChange('analytics')}
+                      className={cn(
+                        'h-6 w-12 rounded-full relative transition-colors',
+                        options.analytics ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-600'
+                      )}
+                      aria-checked={options.analytics}
+                      role="switch"
+                    >
+                      <span 
+                        className={cn(
+                          'absolute top-1 h-4 w-4 bg-white rounded-full transition-transform',
+                          options.analytics ? 'right-1' : 'left-1'
+                        )}
+                      ></span>
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Cookies de marketing */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Cookies de marketing</h3>
+                    <p className="text-sm text-neutral-500">Permiten mostrar anuncios relevantes</p>
+                  </div>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleOptionChange('marketing')}
+                      className={cn(
+                        'h-6 w-12 rounded-full relative transition-colors',
+                        options.marketing ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-600'
+                      )}
+                      aria-checked={options.marketing}
+                      role="switch"
+                    >
+                      <span 
+                        className={cn(
+                          'absolute top-1 h-4 w-4 bg-white rounded-full transition-transform',
+                          options.marketing ? 'right-1' : 'left-1'
+                        )}
+                      ></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <Button 
+                  variant="primary" 
+                  onClick={handleSavePreferences}
+                  className="w-full sm:w-auto"
+                >
+                  Guardar preferencias
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Botones de acción */}
+          <div className="flex flex-col sm:flex-row gap-2 justify-end">
+            <Button 
+              variant="outline" 
+              onClick={handleRejectOptional}
+            >
+              Sólo necesarias
+            </Button>
+            <Button 
+              variant={isExpanded ? 'outline' : 'secondary'} 
+              onClick={handleCustomize}
+            >
+              {isExpanded ? 'Cancelar' : 'Personalizar'}
+            </Button>
+            <Button 
+              variant="primary" 
+              onClick={handleAcceptAll}
+            >
+              Aceptar todas
+            </Button>
+          </div>
+          
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+            Para más información, consulte nuestra{' '}
+            <a href="/politica-de-privacidad" className="text-primary hover:underline">
+              Política de Privacidad
+            </a>
+            .
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2. Botón flotante de configuración
+
+```tsx
+// components/consent/ConsentButton.tsx
+'use client';
+
+import { useState } from 'react';
+import { getConsent } from '@/lib/consent-manager';
+import { cn } from '@/lib/utils';
+import { CookieIcon } from '@heroicons/react/outline';
+import { ConsentManager } from './ConsentManager';
+
+interface ConsentButtonProps {
+  className?: string;
+}
+
+export function ConsentButton({ className }: ConsentButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Solo mostrar el botón si ya existe consentimiento previo
+  const hasExistingConsent = getConsent() !== null;
+  
+  if (!hasExistingConsent) {
+    return null;
+  }
+  
+  return (
+    <>
+      <button
+        onClick={() => setIsOpen(true)}
+        className={cn(
+          'fixed bottom-4 right-4 p-3 rounded-full bg-primary text-white shadow-lg',
+          'hover:bg-primary-dark transition-colors z-40',
+          className
+        )}
+        aria-label="Configurar cookies"
+      >
+        <CookieIcon className="h-5 w-5" />
+      </button>
+      
+      {isOpen && (
+        <ConsentManager onClose={() => setIsOpen(false)} />
+      )}
+    </>
+  );
+}
+```
+
+### 3. Panel de configuración completo
+
+```tsx
+// components/consent/ConsentManager.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { getConsent, saveConsent, removeConsent } from '@/lib/consent-manager';
+import { ConsentOptions, CookieInfo } from '@/types/consent';
+import { cn } from '@/lib/utils';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { Button } from '@/components/ui/Button';
+
+interface ConsentManagerProps {
+  onClose: () => void;
+}
+
+export function ConsentManager({ onClose }: ConsentManagerProps) {
+  const [options, setOptions] = useState<ConsentOptions>({
+    necessary: true,
+    preferences: false,
+    analytics: false,
+    marketing: false,
+    unclassified: false,
+  });
+  
+  const [activeTab, setActiveTab] = useState<keyof ConsentOptions>('necessary');
+  
+  // Cargar configuración existente
+  useEffect(() => {
+    const currentConsent = getConsent();
+    if (currentConsent) {
+      const { timestamp, version, ...consentOptions } = currentConsent;
+      setOptions(consentOptions);
+    }
+  }, []);
+  
+  // Manejador para cambios en opciones
+  const handleOptionChange = (category: keyof ConsentOptions) => {
+    if (category === 'necessary') return; // No permitir cambiar las necesarias
+    
+    setOptions(prev => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  };
+  
+  // Guardar cambios
+  const handleSave = () => {
+    saveConsent(options);
+    onClose();
+    window.location.reload(); // Recargar para aplicar cambios
+  };
+  
+  // Aceptar todas
+  const handleAcceptAll = () => {
+    const allAccepted: ConsentOptions = {
+      necessary: true,
+      preferences: true,
+      analytics: true,
+      marketing: true,
+      unclassified: true,
+    };
+    
+    saveConsent(allAccepted);
+    onClose();
+    window.location.reload();
+  };
+  
+  // Sólo necesarias
+  const handleRejectOptional = () => {
+    const onlyNecessary: ConsentOptions = {
+      necessary: true,
+      preferences: false,
+      analytics: false,
+      marketing: false,
+      unclassified: false,
+    };
+    
+    saveConsent(onlyNecessary);
+    onClose();
+    window.location.reload();
+  };
+  
+  // Información de cookies (simulada aquí, en producción podría venir de API o CMS)
+  const cookiesByCategory: Record<keyof ConsentOptions, CookieInfo[]> = {
+    necessary: [
+      { 
+        name: 'session',
+        domain: 'tusitio.com',
+        duration: 'Sesión',
+        description: 'Mantiene el estado de la sesión del usuario',
+        category: 'necessary',
+        provider: 'Propio'
+      },
+      {
+        name: 'user_consent',
+        domain: 'tusitio.com',
+        duration: '6 meses',
+        description: 'Guarda las preferencias de cookies',
+        category: 'necessary',
+        provider: 'Propio'
+      }
+    ],
+    preferences: [
+      {
+        name: 'theme_preference',
+        domain: 'tusitio.com',
+        duration: '1 año',
+        description: 'Guarda preferencia de tema claro/oscuro',
+        category: 'preferences',
+        provider: 'Propio'
+      }
+    ],
+    analytics: [
+      {
+        name: '_ga',
+        domain: '.tusitio.com',
+        duration: '2 años',
+        description: 'Registra un ID único para estadísticas',
+        category: 'analytics',
+        provider: 'Google Analytics'
+      },
+      {
+        name: '_gid',
+        domain: '.tusitio.com',
+        duration: '24 horas',
+        description: 'Registra un ID único para estadísticas',
+        category: 'analytics',
+        provider: 'Google Analytics'
+      }
+    ],
+    marketing: [
+      {
+        name: '_fbp',
+        domain: '.tusitio.com',
+        duration: '3 meses',
+        description: 'Usado por Facebook para rastrear visitas',
+        category: 'marketing',
+        provider: 'Facebook'
+      }
+    ],
+    unclassified: []
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div 
+        className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-labelledby="consent-manager-title"
+      >
+        {/* Cabecera */}
+        <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-700">
+          <h2 id="consent-manager-title" className="text-lg font-semibold">
+            Configuración de privacidad
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
+            aria-label="Cerrar"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        
+        {/* Contenido principal */}
+        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
+          {/* Pestañas laterales */}
+          <div className="flex-shrink-0 sm:w-48 border-b sm:border-b-0 sm:border-r border-neutral-200 dark:border-neutral-700">
+            <nav className="flex sm:flex-col overflow-x-auto sm:overflow-y-auto p-2 h-full">
+              {(Object.keys(options) as Array<keyof ConsentOptions>).map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setActiveTab(category)}
+                  className={cn(
+                    'px-3 py-2 text-sm rounded-md whitespace-nowrap text-left capitalize',
+                    'transition-colors duration-200',
+                    activeTab === category 
+                      ? 'bg-primary text-white'
+                      : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                  )}
+                >
+                  {category}
+                </button>
+              ))}
+            </nav>
+          </div>
+          
+          {/* Panel de detalles */}
+          <div className="flex-1 p-4 overflow-y-auto">
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium capitalize">{activeTab}</h3>
+                  {activeTab !== 'necessary' && (
+                    <button
+                      onClick={() => handleOptionChange(activeTab)}
+                      className={cn(
+                        'h-6 w-12 rounded-full relative transition-colors',
+                        options[activeTab] ? 'bg-primary' : 'bg-neutral-300 dark:bg-neutral-600'
+                      )}
+                      aria-checked={options[activeTab]}
+                      role="switch"
+                    >
+                      <span 
+                        className={cn(
+                          'absolute top-1 h-4 w-4 bg-white rounded-full transition-transform',
+                          options[activeTab] ? 'right-1' : 'left-1'
+                        )}
+                      ></span>
+                    </button>
+                  )}
+                </div>
+                
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                  {activeTab === 'necessary' && 'Cookies estrictamente necesarias para el funcionamiento básico del sitio web.'}
+                  {activeTab === 'preferences' && 'Cookies que permiten recordar sus preferencias de navegación.'}
+                  {activeTab === 'analytics' && 'Cookies que ayudan a entender cómo interactúa con el sitio web.'}
+                  {activeTab === 'marketing' && 'Cookies utilizadas para ofrecer publicidad relevante según sus intereses.'}
+                  {activeTab === 'unclassified' && 'Cookies sin clasificar o pendientes de categorización.'}
+                </p>
+                
+                {/* Lista de cookies */}
+                {cookiesByCategory[activeTab].length > 0 ? (
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-neutral-50 dark:bg-neutral-900">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium">Nombre</th>
+                          <th className="px-4 py-2 text-left font-medium">Proveedor</th>
+                          <th className="px-4 py-2 text-left font-medium">Duración</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                        {cookiesByCategory[activeTab].map((cookie) => (
+                          <tr key={cookie.name} className="hover:bg-neutral-50 dark:hover:bg-neutral-900">
+                            <td className="px-4 py-2">{cookie.name}</td>
+                            <td className="px-4 py-2">{cookie.provider}</td>
+                            <td className="px-4 py-2">{cookie.duration}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-neutral-500 italic">
+                    No hay cookies en esta categoría.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Pie con acciones */}
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-700 flex flex-wrap gap-2 justify-end">
+          <Button 
+            variant="outline" 
+            onClick={handleRejectOptional}
+          >
+            Sólo necesarias
+          </Button>
+          <Button 
+            variant="secondary" 
+            onClick={handleAcceptAll}
+          >
+            Aceptar todas
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleSave}
+          >
+            Guardar preferencias
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## 🚀 Componentes para integración con los providers
+
+### 1. Componente de Google Analytics
+
+```tsx
+// components/analytics/GoogleAnalytics.tsx
+'use client';
+
+import { useEffect } from 'react';
+import Script from 'next/script';
+import { hasConsent } from '@/lib/consent-manager';
+
+interface GoogleAnalyticsProps {
+  measurementId: string;
+}
+
+export function GoogleAnalytics({ measurementId }: GoogleAnalyticsProps) {
+  const analyticsAllowed = hasConsent('analytics');
+  
+  // No renderizar nada si no hay consentimiento
+  if (!analyticsAllowed) {
+    return null;
+  }
+  
+  return (
+    <>
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`}
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${measurementId}', {
+            page_path: window.location.pathname,
+          });
+        `}
+      </Script>
+    </>
+  );
+}
+```
+
+### 2. Componente de Facebook Pixel
+
+```tsx
+// components/analytics/FacebookPixel.tsx
+'use client';
+
+import { useEffect } from 'react';
+import Script from 'next/script';
+import { hasConsent } from '@/lib/consent-manager';
+import { usePathname } from 'next/navigation';
+
+interface FacebookPixelProps {
+  pixelId: string;
+}
+
+export function FacebookPixel({ pixelId }: FacebookPixelProps) {
+  const pathname = usePathname();
+  const marketingAllowed = hasConsent('marketing');
+  
+  // Seguimiento de cambios de página
+  useEffect(() => {
+    if (marketingAllowed && typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', 'PageView');
+    }
+  }, [pathname, marketingAllowed]);
+  
+  // No renderizar nada si no hay consentimiento
+  if (!marketingAllowed) {
+    return null;
+  }
+  
+  return (
+    <>
+      <Script id="facebook-pixel" strategy="afterInteractive">
+        {`
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window, document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init', '${pixelId}');
+          fbq('track', 'PageView');
+        `}
+      </Script>
+    </>
+  );
+}
+```
+
+### 3. Provider para todos los analíticos
+
+```tsx
+// components/providers/AnalyticsProvider.tsx
+'use client';
+
+import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
+import { FacebookPixel } from '@/components/analytics/FacebookPixel';
+import { ConsentBanner } from '@/components/consent/ConsentBanner';
+import { ConsentButton } from '@/components/consent/ConsentButton';
+
+export function AnalyticsProvider() {
+  // IDs de servicios de analítica
+  const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || '';
+  const FB_PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID || '';
+  
+  return (
+    <>
+      {/* Componentes de gestión de consentimiento */}
+      <ConsentBanner />
+      <ConsentButton />
+      
+      {/* Proveedores de analítica (se renderizarán condicionalmente) */}
+      <GoogleAnalytics measurementId={GA_MEASUREMENT_ID} />
+      <FacebookPixel pixelId={FB_PIXEL_ID} />
+    </>
+  );
+}
+```
+
+---
+
+## 📊 Registros de auditoría de consentimiento
+
+```typescript
+// lib/consent-audit.ts
+import { ConsentOptions } from '@/types/consent';
+
+export interface ConsentRecord {
+  userId?: string;  // Si está autenticado
+  anonymousId: string;  // ID anónimo generado para el usuario
+  timestamp: number;
+  ipAddress: string;
+  userAgent: string;
+  consent: ConsentOptions;
+  region: string;  // Región geográfica para cumplimiento específico
+  source: 'banner' | 'preferences' | 'api';  // Fuente del consentimiento
+}
+
+// Función para registrar el consentimiento (para auditoría)
+export async function logConsentRecord(record: ConsentRecord) {
+  // En un sistema real, esto enviaría los datos a una API o servicio
+  // para almacenar el registro de consentimiento de manera segura
+  try {
+    const response = await fetch('/api/consent/log', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(record),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to log consent');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error logging consent:', error);
+    return false;
+  }
+}
+
+// API endpoint para registrar consentimiento
+// app/api/consent/log/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Datos del cliente
+    const record = await request.json();
+    
+    // Añadir IP si está disponible
+    const ip = request.headers.get('x-forwarded-for') || 
+               request.headers.get('x-real-ip') ||
+               request.ip ||
+               'unknown';
+    
+    record.ipAddress = ip;
+    record.timestamp = Date.now();
+    
+    // En producción, almacenar en base de datos
+    console.log('Consent record:', record);
+    
+    // Para este ejemplo, simplemente devolvemos éxito
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error logging consent:', error);
+    return NextResponse.json(
+      { error: 'Failed to log consent' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+---
+
+## 🛠️ Integración con la aplicación
+
+### 1. Uso en layout principal
+
+```tsx
+// app/layout.tsx
+import { AnalyticsProvider } from '@/components/providers/AnalyticsProvider';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <head />
+      <body>
+        {children}
+        
+        {/* Componentes de analítica y consentimiento */}
+        <AnalyticsProvider />
+      </body>
+    </html>
+  );
+}
+```
+
+### 2. Hook personalizado para verificar consentimiento
+
+```typescript
+// hooks/useConsent.ts
+'use client';
+
+import { useEffect, useState } from 'react';
+import { ConsentOptions } from '@/types/consent';
+import { getConsent, hasConsent, saveConsent } from '@/lib/consent-manager';
+
+export function useConsent() {
+  const [consentOptions, setConsentOptions] = useState<ConsentOptions | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  useEffect(() => {
+    // Cargar consentimiento al montar
+    const currentConsent = getConsent();
+    setConsentOptions(currentConsent ? {
+      necessary: currentConsent.necessary,
+      preferences: currentConsent.preferences,
+      analytics: currentConsent.analytics,
+      marketing: currentConsent.marketing,
+      unclassified: currentConsent.unclassified,
+    } : null);
+    setIsLoaded(true);
+  }, []);
+  
+  // Verificar si hay consentimiento para una categoría
+  const checkConsent = (category: keyof ConsentOptions): boolean => {
+    return hasConsent(category);
+  };
+  
+  // Actualizar consentimiento
+  const updateConsent = (options: Partial<ConsentOptions>) => {
+    const updatedConsent = saveConsent(options);
+    setConsentOptions({
+      necessary: updatedConsent.necessary,
+      preferences: updatedConsent.preferences,
+      analytics: updatedConsent.analytics,
+      marketing: updatedConsent.marketing,
+      unclassified: updatedConsent.unclassified,
+    });
+    return updatedConsent;
+  };
+  
+  return {
+    consentOptions,
+    isLoaded,
+    hasConsented: checkConsent,
+    updateConsent,
+  };
+}
+```
+
+---
+
+## 🧠 Optimizaciones de rendimiento
+
+### 1. Carga diferida de la gestión de consentimiento
+
+```tsx
+// app/layout.tsx (modificado)
+import dynamic from 'next/dynamic';
+
+// Cargar de forma diferida para no impactar en métricas de core web vitals
+const AnalyticsProvider = dynamic(
+  () => import('@/components/providers/AnalyticsProvider').then(mod => mod.AnalyticsProvider),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="es">
+      <head />
+      <body>
+        {children}
+        
+        {/* Componentes de analítica y consentimiento cargados después del LCP */}
+        <AnalyticsProvider />
+      </body>
+    </html>
+  );
+}
+```
+
+### 2. Estrategia de carga para scripts
+
+```typescript
+// app/api/consent-data/route.ts
+// Endpoint para obtener metadatos de cada cookie (en lugar de hardcoding)
+import { NextResponse } from 'next/server';
+import { CookieInfo } from '@/types/consent';
+
+// En producción, esto vendría de una base de datos o CMS
+const cookiesDatabase: CookieInfo[] = [
+  // Cookies necesarias
+  { 
+    name: 'session',
+    domain: 'tusitio.com',
+    duration: 'Sesión',
+    description: 'Mantiene el estado de la sesión del usuario',
+    category: 'necessary',
+    provider: 'Propio'
+  },
+  // Más cookies...
+];
+
+export async function GET() {
+  // Agrupar cookies por categoría
+  const cookiesByCategory = cookiesDatabase.reduce((acc, cookie) => {
+    if (!acc[cookie.category]) {
+      acc[cookie.category] = [];
+    }
+    acc[cookie.category].push(cookie);
+    return acc;
+  }, {} as Record<string, CookieInfo[]>);
+  
+  return NextResponse.json(cookiesByCategory, {
+    headers: {
+      // Cache por 1 día
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+    },
+  });
+}
+```
+
+---
+
+## 🌐 Detección de región para requisitos específicos
+
+```typescript
+// lib/geo-compliance.ts
+export interface RegionCompliance {
+  region: string;
+  requiresExplicitConsent: boolean;
+  requiresRightToObject: boolean;
+  requiresDoCNotSell: boolean;  // CCPA "Do Not Sell My Personal Information"
+  cookieLifespan: number;  // En días
+  consentExpiry: number;   // En días
+}
+
+// Requisitos por región
+const complianceByRegion: Record<string, RegionCompliance> = {
+  'EU': {
+    region: 'EU',
+    requiresExplicitConsent: true,
+    requiresRightToObject: true,
+    requiresDoCNotSell: false,
+    cookieLifespan: 180,  // 6 meses
+    consentExpiry: 180,   // 6 meses
+  },
+  'UK': {
+    region: 'UK',
+    requiresExplicitConsent: true,
+    requiresRightToObject: true,
+    requiresDoCNotSell: false,
+    cookieLifespan: 180,  // 6 meses
+    consentExpiry: 180,   // 6 meses
+  },
+  'US-CA': {  // California
+    region: 'US-CA',
+    requiresExplicitConsent: false,
+    requiresRightToObject: true,
+    requiresDoCNotSell: true,
+    cookieLifespan: 365,  // 1 año
+    consentExpiry: 365,   // 1 año
+  },
+  'BR': {  // Brasil
+    region: 'BR',
+    requiresExplicitConsent: true,
+    requiresRightToObject: true,
+    requiresDoCNotSell: false,
+    cookieLifespan: 180,  // 6 meses
+    consentExpiry: 180,   // 6 meses
+  },
+  'default': {  // Resto del mundo
+    region: 'default',
+    requiresExplicitConsent: false,
+    requiresRightToObject: false,
+    requiresDoCNotSell: false,
+    cookieLifespan: 365,   // 1 año
+    consentExpiry: 365,    // 1 año
+  }
+};
+
+// Obtener reglas según la región
+export function getComplianceRules(region: string): RegionCompliance {
+  // Mapear códigos comunes
+  const mappedRegion = 
+    region.startsWith('US-CA') ? 'US-CA' :
+    region.startsWith('GB') ? 'UK' :
+    (region === 'BR' || region === 'BRA') ? 'BR' :
+    (
+      [
+        'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 
+        'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 
+        'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'
+      ].includes(region)
+    ) ? 'EU' : 'default';
+  
+  return complianceByRegion[mappedRegion] || complianceByRegion['default'];
+}
+
+// Endpoint para obtener región (usando headers Cloudflare)
+// app/api/geo/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getComplianceRules } from '@/lib/geo-compliance';
+
+export async function GET(request: NextRequest) {
+  // Intentar obtener el país del visitante
+  const country = request.headers.get('cf-ipcountry') || 'default';
+  
+  // Obtener reglas de cumplimiento para ese país
+  const rules = getComplianceRules(country);
+  
+  return NextResponse.json({
+    country,
+    rules,
+  });
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Consent Management)
+
+- Implementar banner de consentimiento sin bloquear la carga inicial del sitio
+- Cargar scripts de analytics solo después de obtener consentimiento
+- Verificar siempre el consentimiento antes de activar cookies no esenciales
+- Adaptar interface según la ubicación geográfica del usuario
+- Proporcionar opción de rechazar cookies con igual prominencia que aceptar
+- Utilizar estrategias de lazy-loading para el gestor de consentimiento
+- Mantener registros de auditoría de consentimiento para cumplimiento legal
+- Permitir al usuario cambiar sus preferencias en cualquier momento
+- Implementar caducidad de consentimiento según normativas
+- Asegurar que todos los componentes de consentimiento son totalmente accesibles

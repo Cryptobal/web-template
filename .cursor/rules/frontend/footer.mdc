@@ -1,0 +1,98 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: footer.mdc
+
+## 🎯 Propósito
+Establecer la estructura, diseño y funcionalidad del componente `<Footer />` para el sitio web. Este componente debe reforzar la identidad de marca, mejorar la navegación, aportar al SEO y entregar acceso directo a contacto y recursos clave.
+
+---
+
+## 🧱 Estructura del componente
+
+El `<Footer />` debe contener las siguientes secciones:
+
+### 1. Branding
+- Logo institucional (versión horizontal o secundaria)
+- Frase institucional o propuesta de valor (máx. 20 palabras)
+
+### 2. Navegación por columnas
+Usar navegación dividida por temas. Cada bloque debe estar dentro de un `<nav>` con títulos visibles.
+
+#### Empresa
+- Inicio
+- ¿Quiénes somos?
+- Responsabilidad Social
+
+#### Servicios
+- Automatización
+- IA Aplicada
+- Integración de Sistemas
+- Chatbots
+
+#### Recursos
+- Blog
+- Casos de Éxito
+- Trabaja con Nosotros
+
+#### Soporte
+- Contacto
+- Cotizar Solución
+- Política de Privacidad
+
+### 3. Información de contacto
+- Email: `contacto@tusitio.com`
+- Teléfono: `+56 9 1234 5678`
+- Horario: Lunes a viernes de 09:00 a 18:00
+
+### 4. Redes Sociales
+Enlaces externos con íconos y `aria-label`:
+- LinkedIn
+- Instagram
+- YouTube (opcional)
+
+### 5. Legal
+```html
+<p class="text-xs text-neutral-500">
+  © 2025 Tu Empresa. Todos los derechos reservados.
+</p>
+<a href="/politica-de-privacidad" class="text-xs underline">
+  Política de Privacidad
+</a>
+
+🎨 Diseño UI/UX
+	•	Layout en columnas (grid o flexbox)
+	•	Responsive: columnas colapsables en mobile
+	•	Contraste alto (fondo oscuro o neutro)
+	•	Tipografía legible, 14px mínimo
+	•	Separación clara entre secciones
+	•	Íconos accesibles (aria-label)
+
+⸻
+
+📈 Reglas de SEO
+	•	Usar estructura semántica (<footer>, <nav>, <ul>, <address>)
+	•	Incluir enlaces internos relevantes
+	•	No ocultar el footer con scripts
+	•	Visibilidad en todas las páginas del sitio
+	•	Texto alt en logos e íconos si se usan como imágenes
+
+⸻
+
+🛠️ Reglas para Cursor (Frontend)
+	•	El componente debe crearse como /components/layout/Footer.tsx
+	•	Usar TailwindCSS para todos los estilos
+	•	Debe exportarse como componente global <Footer />
+	•	Compatible con modo oscuro (dark:)
+	•	Preparado para integración futura con CMS o multilenguaje
+	•	Todo el contenido debe ser configurable mediante props o datos externos
+
+export default function Footer() {
+  return (
+    <footer className="bg-neutral-900 text-white py-10 px-6 md:px-16">
+      {/* contenido */}
+    </footer>
+  )
+}

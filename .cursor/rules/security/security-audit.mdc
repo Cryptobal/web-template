@@ -1,0 +1,1159 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla: security-audit.mdc
+
+## 🎯 Propósito
+Establecer un conjunto estándar de prácticas para auditorías de seguridad periódicas y sistemáticas que permitan identificar, analizar y mitigar vulnerabilidades en aplicaciones web, asegurando la detección temprana de problemas y el mantenimiento de altos niveles de seguridad.
+
+---
+
+## 🔍 Auditorías Automatizadas
+
+### 1. Configuración de escaneo de dependencias
+
+```yaml
+# .github/workflows/dependency-scan.yml
+name: Dependency Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 1' # Ejecutar cada lunes a medianoche
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: npm audit --production --audit-level=high
+      
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --all-projects
+      
+      - name: Generate dependency report
+        run: npm list --all --json > dependency-report.json
+        
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-report
+          path: dependency-report.json
+```
+
+### 2. Escaneo de código estático (SAST)
+
+```yaml
+# .github/workflows/sast-scan.yml
+name: Static Application Security Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 3' # Ejecutar cada miércoles a medianoche
+
+jobs:
+  sast-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Run ESLint security rules
+        run: |
+          npm ci
+          npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.security.js
+          
+      - name: Run SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/r2c-security-audit
+            p/javascript
+            p/react
+            p/nextjs
+            p/typescript
+          generateSarif: true
+      
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: semgrep.sarif
+```
+
+### 3. Integración con herramientas de seguridad
+
+```typescript
+// scripts/security/run-audit.ts
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+interface AuditOptions {
+  skipDependencyCheck?: boolean;
+  skipStaticAnalysis?: boolean;
+  outputDir?: string;
+  severity?: 'low' | 'moderate' | 'high' | 'critical';
+}
+
+async function runSecurityAudit(options: AuditOptions = {}) {
+  const {
+    skipDependencyCheck = false,
+    skipStaticAnalysis = false,
+    outputDir = './security-reports',
+    severity = 'high',
+  } = options;
+  
+  // Crear directorio de salida si no existe
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  
+  console.log('🔍 Iniciando auditoría de seguridad...');
+  
+  // Ejecutar npm audit
+  if (!skipDependencyCheck) {
+    console.log('📦 Analizando dependencias...');
+    try {
+      const npmAuditOutput = execSync(`npm audit --json --audit-level=${severity}`);
+      fs.writeFileSync(
+        path.join(outputDir, 'npm-audit-report.json'),
+        npmAuditOutput
+      );
+      console.log('✅ Análisis de dependencias completado');
+    } catch (error) {
+      const errorOutput = error.stdout.toString();
+      fs.writeFileSync(
+        path.join(outputDir, 'npm-audit-report.json'),
+        errorOutput
+      );
+      console.error('⚠️ Se encontraron vulnerabilidades en dependencias');
+    }
+  }
+  
+  // Ejecutar análisis estático
+  if (!skipStaticAnalysis) {
+    console.log('🔎 Ejecutando análisis estático de código...');
+    
+    // ESLint con reglas de seguridad
+    try {
+      const eslintOutput = execSync(
+        'npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.security.js --format json',
+        { stdio: 'pipe' }
+      );
+      fs.writeFileSync(
+        path.join(outputDir, 'eslint-security-report.json'),
+        eslintOutput
+      );
+      console.log('✅ Análisis ESLint completado');
+    } catch (error) {
+      const errorOutput = error.stdout.toString();
+      fs.writeFileSync(
+        path.join(outputDir, 'eslint-security-report.json'),
+        errorOutput
+      );
+      console.error('⚠️ ESLint encontró problemas de seguridad');
+    }
+    
+    // Semgrep
+    try {
+      console.log('🔎 Ejecutando Semgrep...');
+      execSync(
+        'npx semgrep --config=p/owasp-top-ten --json > ' +
+        path.join(outputDir, 'semgrep-report.json'),
+        { stdio: 'pipe' }
+      );
+      console.log('✅ Análisis Semgrep completado');
+    } catch (error) {
+      console.error('⚠️ Error al ejecutar Semgrep:', error.message);
+    }
+  }
+  
+  console.log('🏁 Auditoría de seguridad completada');
+  console.log(`📊 Informes disponibles en: ${outputDir}`);
+  
+  // Generar informe HTML resumen
+  generateSummaryReport(outputDir);
+}
+
+function generateSummaryReport(outputDir: string) {
+  // Aquí iría lógica para generar un informe HTML resumen
+  // a partir de los distintos informes JSON
+  console.log('📝 Generando informe resumen...');
+}
+
+// Ejecutar si se llama directamente
+if (require.main === module) {
+  runSecurityAudit();
+}
+
+export default runSecurityAudit;
+```
+
+---
+
+## 🔏 Auditorías Manuales
+
+### 1. Lista de verificación de seguridad (checklist)
+
+```typescript
+// lib/security/audit-checklist.ts
+export enum RiskLevel {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical',
+}
+
+export interface SecurityCheckItem {
+  id: string;
+  category: string;
+  description: string;
+  riskLevel: RiskLevel;
+  remediation: string;
+  owasp?: string; // Referencia a OWASP Top 10
+  automated: boolean;
+}
+
+export const securityChecklist: SecurityCheckItem[] = [
+  // Autenticación
+  {
+    id: 'AUTH-01',
+    category: 'Autenticación',
+    description: 'Verificar que las contraseñas se almacenan con algoritmos de hash seguros (bcrypt, Argon2)',
+    riskLevel: RiskLevel.CRITICAL,
+    remediation: 'Implementar bcrypt o Argon2 para el hashing de contraseñas',
+    owasp: 'A02:2021 - Fallas Criptográficas',
+    automated: true,
+  },
+  {
+    id: 'AUTH-02',
+    category: 'Autenticación',
+    description: 'Comprobar implementación de bloqueo de cuentas tras múltiples intentos fallidos',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Implementar mecanismo de rate limiting y bloqueo temporal de cuentas',
+    owasp: 'A07:2021 - Fallas de Autenticación',
+    automated: false,
+  },
+  {
+    id: 'AUTH-03',
+    category: 'Autenticación',
+    description: 'Verificar que se utiliza 2FA para roles privilegiados',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Implementar autenticación en dos factores para administradores',
+    owasp: 'A07:2021 - Fallas de Autenticación',
+    automated: false,
+  },
+  
+  // Autorización
+  {
+    id: 'AUTHZ-01',
+    category: 'Autorización',
+    description: 'Verificar que existe validación de permisos en todos los endpoints API',
+    riskLevel: RiskLevel.CRITICAL,
+    remediation: 'Implementar middleware de autorización en todas las rutas protegidas',
+    owasp: 'A01:2021 - Pérdida de Control de Acceso',
+    automated: true,
+  },
+  {
+    id: 'AUTHZ-02',
+    category: 'Autorización',
+    description: 'Comprobar que no existen referencias directas a objetos (IDOR)',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Utilizar referencias indirectas o validar pertenencia de recursos',
+    owasp: 'A01:2021 - Pérdida de Control de Acceso',
+    automated: false,
+  },
+  
+  // Protección de datos
+  {
+    id: 'DATA-01',
+    category: 'Protección de Datos',
+    description: 'Verificar que los datos sensibles están cifrados en reposo',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Implementar cifrado a nivel de base de datos o campo',
+    owasp: 'A02:2021 - Fallas Criptográficas',
+    automated: false,
+  },
+  {
+    id: 'DATA-02',
+    category: 'Protección de Datos',
+    description: 'Comprobar que se utilizan conexiones HTTPS para toda la aplicación',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Configurar redirección HTTP a HTTPS y cabeceras HSTS',
+    owasp: 'A02:2021 - Fallas Criptográficas',
+    automated: true,
+  },
+  
+  // Protección contra inyecciones
+  {
+    id: 'INJ-01',
+    category: 'Inyecciones',
+    description: 'Verificar protección contra SQL Injection',
+    riskLevel: RiskLevel.CRITICAL,
+    remediation: 'Utilizar ORM con parámetros preparados o consultas parametrizadas',
+    owasp: 'A03:2021 - Inyección',
+    automated: true,
+  },
+  {
+    id: 'INJ-02',
+    category: 'Inyecciones',
+    description: 'Comprobar protección contra Cross-Site Scripting (XSS)',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Implementar sanitización de entrada y salida, usar CSP',
+    owasp: 'A03:2021 - Inyección',
+    automated: true,
+  },
+  
+  // Configuración de seguridad
+  {
+    id: 'CONFIG-01',
+    category: 'Configuración',
+    description: 'Verificar cabeceras de seguridad HTTP configuradas correctamente',
+    riskLevel: RiskLevel.MEDIUM,
+    remediation: 'Configurar cabeceras CSP, X-Content-Type-Options, X-Frame-Options, etc.',
+    owasp: 'A05:2021 - Configuración de Seguridad Incorrecta',
+    automated: true,
+  },
+  {
+    id: 'CONFIG-02',
+    category: 'Configuración',
+    description: 'Comprobar que no existen secretos en el código fuente',
+    riskLevel: RiskLevel.CRITICAL,
+    remediation: 'Utilizar variables de entorno y sistemas de gestión de secretos',
+    owasp: 'A05:2021 - Configuración de Seguridad Incorrecta',
+    automated: true,
+  },
+  
+  // Otros
+  {
+    id: 'LOG-01',
+    category: 'Logging',
+    description: 'Verificar que existen logs de seguridad para eventos críticos',
+    riskLevel: RiskLevel.MEDIUM,
+    remediation: 'Implementar logging de eventos de autenticación y autorización',
+    owasp: 'A09:2021 - Fallas en el Registro y Monitoreo',
+    automated: true,
+  },
+  {
+    id: 'CLIENT-01',
+    category: 'Seguridad Frontend',
+    description: 'Comprobar protección contra ataques CSRF',
+    riskLevel: RiskLevel.HIGH,
+    remediation: 'Implementar tokens CSRF en formularios',
+    owasp: 'A01:2021 - Pérdida de Control de Acceso',
+    automated: true,
+  },
+];
+
+export function generateAuditChecklistMd(): string {
+  let markdown = '# Lista de Verificación de Seguridad\n\n';
+  
+  // Agrupar por categoría
+  const categorized = securityChecklist.reduce((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = [];
+    }
+    acc[item.category].push(item);
+    return acc;
+  }, {} as Record<string, SecurityCheckItem[]>);
+  
+  // Generar markdown por categoría
+  for (const [category, items] of Object.entries(categorized)) {
+    markdown += `## ${category}\n\n`;
+    markdown += '| ID | Descripción | Riesgo | OWASP | Automatizado |\n';
+    markdown += '|---|------------|--------|-------|-------------|\n';
+    
+    for (const item of items) {
+      const riskEmoji = 
+        item.riskLevel === RiskLevel.CRITICAL ? '🔴' :
+        item.riskLevel === RiskLevel.HIGH ? '🟠' :
+        item.riskLevel === RiskLevel.MEDIUM ? '🟡' : '🟢';
+      
+      markdown += `| ${item.id} | ${item.description} | ${riskEmoji} ${item.riskLevel} | ${item.owasp || 'N/A'} | ${item.automated ? '✅' : '❌'} |\n`;
+    }
+    
+    markdown += '\n';
+  }
+  
+  return markdown;
+}
+```
+
+### 2. Plantilla de informe de auditoría
+
+```typescript
+// templates/security-audit-report.ts
+import { securityChecklist, SecurityCheckItem, RiskLevel } from '../lib/security/audit-checklist';
+
+export interface AuditFinding {
+  checkItemId: string;
+  status: 'pass' | 'fail' | 'na';
+  notes: string;
+  evidenceUrls?: string[];
+  remediationPlan?: string;
+}
+
+export interface AuditReport {
+  projectName: string;
+  version: string;
+  auditDate: string;
+  auditors: string[];
+  scope: string;
+  methodology: string;
+  findings: AuditFinding[];
+  summary: {
+    totalChecks: number;
+    passed: number;
+    failed: number;
+    notApplicable: number;
+    criticalIssues: number;
+    highIssues: number;
+    mediumIssues: number;
+    lowIssues: number;
+  };
+  recommendations: string[];
+}
+
+export function generateAuditReportTemplate(): AuditReport {
+  return {
+    projectName: '[Nombre del Proyecto]',
+    version: '[Versión del Proyecto]',
+    auditDate: new Date().toISOString().split('T')[0],
+    auditors: ['[Nombre del Auditor]'],
+    scope: 'La auditoría incluye revisión de código, análisis de configuración y pruebas manuales en los entornos de desarrollo y preproducción.',
+    methodology: 'Se sigue la metodología OWASP Testing Guide v4 y se utilizan herramientas automatizadas y pruebas manuales.',
+    findings: securityChecklist.map(item => ({
+      checkItemId: item.id,
+      status: 'na', // Por defecto marcar como "no aplicable"
+      notes: '',
+      evidenceUrls: [],
+      remediationPlan: '',
+    })),
+    summary: {
+      totalChecks: securityChecklist.length,
+      passed: 0,
+      failed: 0,
+      notApplicable: securityChecklist.length,
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    },
+    recommendations: [
+      'Priorizar la resolución de vulnerabilidades críticas y altas',
+      'Implementar pruebas de seguridad automatizadas en el pipeline CI/CD',
+      'Realizar auditorías de seguridad periódicas',
+    ],
+  };
+}
+
+export function generateAuditReportMd(report: AuditReport): string {
+  const findingDetails = report.findings
+    .filter(f => f.status === 'fail')
+    .map(finding => {
+      const checkItem = securityChecklist.find(c => c.id === finding.checkItemId);
+      if (!checkItem) return '';
+      
+      let md = `### ${checkItem.id}: ${checkItem.description}\n\n`;
+      md += `**Riesgo:** ${checkItem.riskLevel}\n\n`;
+      md += `**Categoría:** ${checkItem.category}\n\n`;
+      md += finding.notes ? `**Detalles:** ${finding.notes}\n\n` : '';
+      md += `**Recomendación:** ${checkItem.remediation}\n\n`;
+      md += finding.remediationPlan ? `**Plan de Acción:** ${finding.remediationPlan}\n\n` : '';
+      
+      if (finding.evidenceUrls && finding.evidenceUrls.length > 0) {
+        md += '**Evidencia:**\n\n';
+        for (const url of finding.evidenceUrls) {
+          md += `- [Evidencia](mdc:${url})\n`;
+        }
+        md += '\n';
+      }
+      
+      return md;
+    }).join('---\n\n');
+  
+  const riskSummary = 
+    report.summary.criticalIssues > 0 ? 'CRÍTICO' :
+    report.summary.highIssues > 0 ? 'ALTO' :
+    report.summary.mediumIssues > 0 ? 'MEDIO' :
+    report.summary.lowIssues > 0 ? 'BAJO' : 'NINGUNO';
+  
+  let markdown = `# Informe de Auditoría de Seguridad: ${report.projectName}\n\n`;
+  markdown += `**Fecha:** ${report.auditDate}\n\n`;
+  markdown += `**Versión:** ${report.version}\n\n`;
+  markdown += `**Auditores:** ${report.auditors.join(', ')}\n\n`;
+  
+  markdown += '## Resumen Ejecutivo\n\n';
+  markdown += `El nivel de riesgo general detectado es: **${riskSummary}**\n\n`;
+  markdown += `Se han evaluado un total de ${report.summary.totalChecks} controles de seguridad, con los siguientes resultados:\n\n`;
+  markdown += `- ✅ **${report.summary.passed}** controles cumplen los estándares de seguridad\n`;
+  markdown += `- ❌ **${report.summary.failed}** controles presentan vulnerabilidades\n`;
+  markdown += `- ➖ **${report.summary.notApplicable}** controles no son aplicables\n\n`;
+  
+  markdown += '### Distribución de Vulnerabilidades\n\n';
+  markdown += `- 🔴 **${report.summary.criticalIssues}** Críticas\n`;
+  markdown += `- 🟠 **${report.summary.highIssues}** Altas\n`;
+  markdown += `- 🟡 **${report.summary.mediumIssues}** Medias\n`;
+  markdown += `- 🟢 **${report.summary.lowIssues}** Bajas\n\n`;
+  
+  markdown += '## Alcance\n\n';
+  markdown += `${report.scope}\n\n`;
+  
+  markdown += '## Metodología\n\n';
+  markdown += `${report.methodology}\n\n`;
+  
+  if (report.summary.failed > 0) {
+    markdown += '## Vulnerabilidades Detectadas\n\n';
+    markdown += findingDetails;
+  } else {
+    markdown += '## Vulnerabilidades Detectadas\n\n';
+    markdown += 'No se han detectado vulnerabilidades.\n\n';
+  }
+  
+  markdown += '## Recomendaciones\n\n';
+  for (const rec of report.recommendations) {
+    markdown += `- ${rec}\n`;
+  }
+  
+  return markdown;
+}
+```
+
+---
+
+## 🧪 Pruebas de Penetración
+
+### 1. Configuración de OWASP ZAP
+
+```typescript
+// scripts/security/run-zap-scan.ts
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+interface ZapScanOptions {
+  target: string;
+  outputDir?: string;
+  apiKey?: string;
+  scanType?: 'baseline' | 'full' | 'api';
+  contextFile?: string;
+  spiderDurationMinutes?: number;
+}
+
+async function runZapScan(options: ZapScanOptions) {
+  const {
+    target,
+    outputDir = './security-reports/zap',
+    apiKey = process.env.ZAP_API_KEY,
+    scanType = 'baseline',
+    contextFile,
+    spiderDurationMinutes = 5,
+  } = options;
+  
+  if (!target) {
+    throw new Error('Se requiere una URL objetivo para el escaneo ZAP');
+  }
+  
+  // Crear directorio de salida si no existe
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  
+  const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+  const reportFilename = `zap-scan-report-${dateStr}`;
+  
+  console.log(`🔍 Iniciando escaneo ZAP ${scanType} contra ${target}...`);
+  
+  let command = '';
+  
+  switch (scanType) {
+    case 'baseline':
+      // Escaneo básico sin spider
+      command = `docker run --rm -v "${path.resolve(outputDir)}:/zap/wrk:rw" -t owasp/zap2docker-stable zap-baseline.py ` +
+        `-t ${target} -g gen.conf -r ${reportFilename}.html -x ${reportFilename}.xml`;
+      break;
+      
+    case 'full':
+      // Escaneo completo con spider y escaneo activo
+      command = `docker run --rm -v "${path.resolve(outputDir)}:/zap/wrk:rw" -t owasp/zap2docker-stable zap-full-scan.py ` +
+        `-t ${target} -g gen.conf -r ${reportFilename}.html -x ${reportFilename}.xml ` +
+        `-d -m ${spiderDurationMinutes}`;
+      break;
+      
+    case 'api':
+      // Escaneo de API
+      command = `docker run --rm -v "${path.resolve(outputDir)}:/zap/wrk:rw" -t owasp/zap2docker-stable zap-api-scan.py ` +
+        `-t ${target} -f openapi -g gen.conf -r ${reportFilename}.html -x ${reportFilename}.xml`;
+      break;
+  }
+  
+  if (contextFile && fs.existsSync(contextFile)) {
+    command += ` -n "${contextFile}"`;
+  }
+  
+  // Añadir API key si está disponible
+  if (apiKey) {
+    command += ` --api-key "${apiKey}"`;
+  }
+  
+  try {
+    console.log(`Ejecutando ZAP scan con: ${command.replace(apiKey || '', '******')}`);
+    execSync(command, { stdio: 'inherit' });
+    
+    console.log(`✅ Escaneo ZAP completado. Informe disponible en: ${outputDir}/${reportFilename}.html`);
+    
+    // Generar resumen de vulnerabilidades encontradas
+    if (fs.existsSync(`${outputDir}/${reportFilename}.xml`)) {
+      const xmlContent = fs.readFileSync(`${outputDir}/${reportFilename}.xml`, 'utf8');
+      const summary = generateZapSummary(xmlContent);
+      fs.writeFileSync(`${outputDir}/${reportFilename}-summary.json`, JSON.stringify(summary, null, 2));
+      console.log('📊 Resumen de vulnerabilidades generado');
+    }
+    
+    return {
+      success: true,
+      reportPath: `${outputDir}/${reportFilename}.html`,
+      summaryPath: `${outputDir}/${reportFilename}-summary.json`,
+    };
+  } catch (error) {
+    console.error('❌ Error al ejecutar el escaneo ZAP:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+function generateZapSummary(xmlContent: string) {
+  // Parsear XML y generar resumen (simplificado para el ejemplo)
+  // En la implementación real utilizaríamos una biblioteca XML
+  const highMatches = (xmlContent.match(/riskcode="3"/g) || []).length;
+  const mediumMatches = (xmlContent.match(/riskcode="2"/g) || []).length;
+  const lowMatches = (xmlContent.match(/riskcode="1"/g) || []).length;
+  const infoMatches = (xmlContent.match(/riskcode="0"/g) || []).length;
+  
+  return {
+    timestamp: new Date().toISOString(),
+    vulnerabilities: {
+      high: highMatches,
+      medium: mediumMatches,
+      low: lowMatches,
+      info: infoMatches,
+    },
+    total: highMatches + mediumMatches + lowMatches + infoMatches,
+  };
+}
+
+// Ejecutar si se llama directamente
+if (require.main === module) {
+  const target = process.argv[2];
+  if (!target) {
+    console.error('❌ Debe proporcionar una URL objetivo como argumento');
+    process.exit(1);
+  }
+  
+  runZapScan({ target, scanType: 'baseline' });
+}
+
+export default runZapScan;
+```
+
+### 2. Gestión de pruebas de seguridad
+
+```typescript
+// lib/security/pentest-management.ts
+export enum PentestStatus {
+  PLANNED = 'planned',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  REMEDIATION = 'remediation',
+  VERIFIED = 'verified',
+}
+
+export enum FindingSeverity {
+  CRITICAL = 'critical',
+  HIGH = 'high',
+  MEDIUM = 'medium',
+  LOW = 'low',
+  INFO = 'info',
+}
+
+export enum FindingStatus {
+  OPEN = 'open',
+  IN_PROGRESS = 'in_progress',
+  FIXED = 'fixed',
+  VERIFIED = 'verified',
+  NOT_APPLICABLE = 'not_applicable',
+  ACCEPTED_RISK = 'accepted_risk',
+}
+
+export interface PentestFinding {
+  id: string;
+  title: string;
+  description: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  cwe?: string; // Common Weakness Enumeration
+  owasp?: string; // OWASP Top 10 Reference
+  steps_to_reproduce: string[];
+  evidence?: string;
+  impact: string;
+  remediation: string;
+  assigned_to?: string;
+  reported_date: string;
+  updated_date: string;
+  fixed_date?: string;
+  verified_date?: string;
+  risk_acceptance_reason?: string;
+}
+
+export interface PentestReport {
+  id: string;
+  name: string;
+  status: PentestStatus;
+  start_date: string;
+  end_date?: string;
+  scope: {
+    description: string;
+    targets: string[];
+    excluded: string[];
+    authentication_tested: boolean;
+  };
+  methodology: string[];
+  findings: PentestFinding[];
+  executive_summary: string;
+  recommendations: string[];
+  team_members: string[];
+  tools_used: string[];
+}
+
+// Función para generar un informe de pentest vacío (plantilla)
+export function createPentestTemplate(name: string): PentestReport {
+  return {
+    id: `PT-${Date.now()}`,
+    name,
+    status: PentestStatus.PLANNED,
+    start_date: new Date().toISOString().split('T')[0],
+    scope: {
+      description: '',
+      targets: [],
+      excluded: [],
+      authentication_tested: false,
+    },
+    methodology: [
+      'Reconocimiento y recopilación de información',
+      'Identificación de vectores de ataque',
+      'Pruebas de autenticación y autorización',
+      'Pruebas de inyección',
+      'Pruebas de gestión de sesiones',
+      'Validación de entradas',
+      'Pruebas de lógica de negocio',
+      'Pruebas de configuración y despliegue',
+    ],
+    findings: [],
+    executive_summary: '',
+    recommendations: [],
+    team_members: [],
+    tools_used: [
+      'OWASP ZAP',
+      'Burp Suite',
+      'Nmap',
+      'Nikto',
+    ],
+  };
+}
+
+// Función para añadir un hallazgo al informe
+export function addFinding(
+  report: PentestReport,
+  finding: Omit<PentestFinding, 'id' | 'reported_date' | 'updated_date' | 'status'>
+): PentestReport {
+  const now = new Date().toISOString();
+  const findingId = `F-${report.findings.length + 1}`;
+  
+  const newFinding: PentestFinding = {
+    id: findingId,
+    ...finding,
+    status: FindingStatus.OPEN,
+    reported_date: now,
+    updated_date: now,
+  };
+  
+  return {
+    ...report,
+    findings: [...report.findings, newFinding],
+  };
+}
+
+// Función para actualizar el estado de un hallazgo
+export function updateFindingStatus(
+  report: PentestReport,
+  findingId: string,
+  status: FindingStatus,
+  notes?: string
+): PentestReport {
+  const now = new Date().toISOString();
+  
+  const updatedFindings = report.findings.map(finding => {
+    if (finding.id !== findingId) return finding;
+    
+    const updatedFinding: PentestFinding = {
+      ...finding,
+      status,
+      updated_date: now,
+    };
+    
+    // Añadir fechas específicas según el estado
+    if (status === FindingStatus.FIXED) {
+      updatedFinding.fixed_date = now;
+    } else if (status === FindingStatus.VERIFIED) {
+      updatedFinding.verified_date = now;
+    } else if (status === FindingStatus.ACCEPTED_RISK && notes) {
+      updatedFinding.risk_acceptance_reason = notes;
+    }
+    
+    return updatedFinding;
+  });
+  
+  return {
+    ...report,
+    findings: updatedFindings,
+  };
+}
+
+// Generar resumen estadístico del informe
+export function generatePentestSummary(report: PentestReport) {
+  const findingsBySeverity = report.findings.reduce(
+    (acc, finding) => {
+      acc[finding.severity] = (acc[finding.severity] || 0) + 1;
+      return acc;
+    },
+    {} as Record<FindingSeverity, number>
+  );
+  
+  const findingsByStatus = report.findings.reduce(
+    (acc, finding) => {
+      acc[finding.status] = (acc[finding.status] || 0) + 1;
+      return acc;
+    },
+    {} as Record<FindingStatus, number>
+  );
+  
+  return {
+    totalFindings: report.findings.length,
+    bySeverity: findingsBySeverity,
+    byStatus: findingsByStatus,
+    remediationProgress: findingsByStatus[FindingStatus.FIXED] 
+      ? (findingsByStatus[FindingStatus.FIXED] / report.findings.length) * 100
+      : 0,
+    verificationProgress: findingsByStatus[FindingStatus.VERIFIED]
+      ? (findingsByStatus[FindingStatus.VERIFIED] / report.findings.length) * 100
+      : 0,
+  };
+}
+```
+
+---
+
+## 📊 Métricas de Seguridad
+
+### 1. Dashboard de seguridad
+
+```typescript
+// lib/security/metrics.ts
+import { PentestReport, FindingSeverity, FindingStatus } from './pentest-management';
+
+export interface SecurityMetric {
+  name: string;
+  value: number;
+  previous?: number;
+  target?: number;
+  trend?: 'up' | 'down' | 'stable';
+  isGood?: boolean; // Si un aumento es bueno o malo
+}
+
+export interface SecurityMetrics {
+  timestamp: string;
+  overall_score: number; // 0-100
+  vulnerability_metrics: {
+    open_vulnerabilities: SecurityMetric;
+    mean_time_to_fix: SecurityMetric; // Días
+    fix_rate: SecurityMetric; // Porcentaje
+    severe_vulnerabilities: SecurityMetric;
+    vulnerability_density: SecurityMetric; // Vulnerabilidades / 1000 líneas de código
+  };
+  testing_metrics: {
+    security_tests_coverage: SecurityMetric; // Porcentaje
+    automated_tests: SecurityMetric;
+    penetration_test_coverage: SecurityMetric;
+  };
+  compliance_metrics: {
+    critical_compliance_issues: SecurityMetric;
+    compliance_pass_rate: SecurityMetric;
+  };
+  code_metrics: {
+    secure_coding_violations: SecurityMetric;
+    secrets_detected: SecurityMetric;
+  };
+}
+
+// Función para calcular el tiempo medio de resolución (MTTR)
+export function calculateMeanTimeToResolve(reports: PentestReport[]): number {
+  let totalTimeToResolve = 0;
+  let totalResolvedFindings = 0;
+  
+  for (const report of reports) {
+    for (const finding of report.findings) {
+      if (finding.status === FindingStatus.FIXED && finding.fixed_date) {
+        const reportedDate = new Date(finding.reported_date);
+        const fixedDate = new Date(finding.fixed_date);
+        const timeToResolve = (fixedDate.getTime() - reportedDate.getTime()) / (1000 * 60 * 60 * 24); // Días
+        
+        totalTimeToResolve += timeToResolve;
+        totalResolvedFindings++;
+      }
+    }
+  }
+  
+  return totalResolvedFindings > 0
+    ? totalTimeToResolve / totalResolvedFindings
+    : 0;
+}
+
+// Función para contar vulnerabilidades abiertas por severidad
+export function countOpenVulnerabilities(
+  reports: PentestReport[],
+  severities?: FindingSeverity[]
+): number {
+  return reports.flatMap(report => report.findings)
+    .filter(finding => 
+      finding.status === FindingStatus.OPEN &&
+      (!severities || severities.includes(finding.severity))
+    ).length;
+}
+
+// Cálculo de tasa de resolución
+export function calculateFixRate(reports: PentestReport[]): number {
+  const allFindings = reports.flatMap(report => report.findings);
+  const fixedCount = allFindings.filter(f => 
+    f.status === FindingStatus.FIXED || f.status === FindingStatus.VERIFIED
+  ).length;
+  
+  return allFindings.length > 0
+    ? (fixedCount / allFindings.length) * 100
+    : 100; // Si no hay hallazgos, la tasa es 100%
+}
+
+// Puntuación general de seguridad
+export function calculateOverallSecurityScore(metrics: Omit<SecurityMetrics, 'timestamp' | 'overall_score'>): number {
+  // Cálculo simplificado de puntuación en escala 0-100
+  const weights = {
+    vulnerability: 40,
+    testing: 25,
+    compliance: 20,
+    code: 15,
+  };
+  
+  // Vulnerabilidades (más bajo es mejor)
+  const vulnScore = 100 - Math.min(100, (
+    metrics.vulnerability_metrics.open_vulnerabilities.value * 5 +
+    metrics.vulnerability_metrics.severe_vulnerabilities.value * 10
+  ) / 3);
+  
+  // Testing (más alto es mejor)
+  const testingScore = (
+    metrics.testing_metrics.security_tests_coverage.value +
+    metrics.testing_metrics.automated_tests.value / 10 +
+    metrics.testing_metrics.penetration_test_coverage.value
+  ) / 3;
+  
+  // Compliance (más alto es mejor)
+  const complianceScore = Math.max(0, 100 - (
+    metrics.compliance_metrics.critical_compliance_issues.value * 10
+  ));
+  
+  // Código (más bajo es mejor)
+  const codeScore = 100 - Math.min(100, (
+    metrics.code_metrics.secure_coding_violations.value / 5 +
+    metrics.code_metrics.secrets_detected.value * 20
+  ));
+  
+  // Puntuación ponderada
+  return Math.round(
+    (vulnScore * weights.vulnerability +
+    testingScore * weights.testing +
+    complianceScore * weights.compliance +
+    codeScore * weights.code) / 100
+  );
+}
+
+// Generar métricas de ejemplo para demostración
+export function generateExampleMetrics(): SecurityMetrics {
+  const metrics: Omit<SecurityMetrics, 'timestamp' | 'overall_score'> = {
+    vulnerability_metrics: {
+      open_vulnerabilities: {
+        name: 'Vulnerabilidades abiertas',
+        value: 12,
+        previous: 15,
+        trend: 'down',
+        isGood: true,
+      },
+      mean_time_to_fix: {
+        name: 'Tiempo medio para solucionar (días)',
+        value: 5.3,
+        previous: 7.1,
+        target: 3,
+        trend: 'down',
+        isGood: true,
+      },
+      fix_rate: {
+        name: 'Tasa de resolución (%)',
+        value: 78,
+        previous: 65,
+        target: 90,
+        trend: 'up',
+        isGood: true,
+      },
+      severe_vulnerabilities: {
+        name: 'Vulnerabilidades graves',
+        value: 3,
+        previous: 5,
+        target: 0,
+        trend: 'down',
+        isGood: true,
+      },
+      vulnerability_density: {
+        name: 'Densidad de vulnerabilidades',
+        value: 2.4,
+        previous: 3.1,
+        trend: 'down',
+        isGood: true,
+      },
+    },
+    testing_metrics: {
+      security_tests_coverage: {
+        name: 'Cobertura de pruebas de seguridad (%)',
+        value: 65,
+        previous: 58,
+        target: 80,
+        trend: 'up',
+        isGood: true,
+      },
+      automated_tests: {
+        name: 'Pruebas automatizadas',
+        value: 123,
+        previous: 98,
+        trend: 'up',
+        isGood: true,
+      },
+      penetration_test_coverage: {
+        name: 'Cobertura de pentest (%)',
+        value: 70,
+        previous: 70,
+        target: 90,
+        trend: 'stable',
+        isGood: false,
+      },
+    },
+    compliance_metrics: {
+      critical_compliance_issues: {
+        name: 'Problemas críticos de cumplimiento',
+        value: 2,
+        previous: 4,
+        target: 0,
+        trend: 'down',
+        isGood: true,
+      },
+      compliance_pass_rate: {
+        name: 'Tasa de cumplimiento (%)',
+        value: 87,
+        previous: 82,
+        target: 100,
+        trend: 'up',
+        isGood: true,
+      },
+    },
+    code_metrics: {
+      secure_coding_violations: {
+        name: 'Violaciones de código seguro',
+        value: 34,
+        previous: 42,
+        trend: 'down',
+        isGood: true,
+      },
+      secrets_detected: {
+        name: 'Secretos detectados',
+        value: 0,
+        previous: 3,
+        trend: 'down',
+        isGood: true,
+      },
+    },
+  };
+  
+  return {
+    timestamp: new Date().toISOString(),
+    overall_score: calculateOverallSecurityScore(metrics),
+    ...metrics,
+  };
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Security Audit)
+
+- Configurar escaneo automático de dependencias con cada build (npm audit, Snyk, etc.)
+- Implementar análisis estático de código (SonarQube, ESLint con reglas de seguridad)
+- Ejecutar pruebas de penetración automatizadas (OWASP ZAP) en entornos de QA/Staging
+- Mantener una lista de verificación de seguridad actualizada para revisiones manuales
+- Realizar auditorías de seguridad completas antes de cambios arquitecturales importantes
+- Establecer proceso formal para seguimiento y resolución de vulnerabilidades
+- Ejecutar escaneo de secretos en código (detect-secrets, trufflehog) antes de commits
+- Establecer métricas y KPIs de seguridad con seguimiento periódico
+- Realizar análisis de composición de software (SCA) para todas las dependencias
+- Implementar verificación de componentes de terceros antes de su incorporación
+- Mantener un inventario actualizado de activos (aplicaciones, APIs, bases de datos)
+- Ejecutar auditorías de permisos y accesos periódicamente
+- Implementar proceso de revisión de seguridad en pull requests
+- Establecer análisis de configuración de infraestructura como código (IaC)
+- Mantener documentación actualizada de la arquitectura de seguridad
+- Realizar simulacros de respuesta a incidentes de seguridad periódicamente
+- Crear informes de seguridad ejecutivos para stakeholders
+- Establecer programa de recompensas por bugs (bug bounty) o pruebas de seguridad externas
+- Revisar y actualizar políticas de seguridad al menos semestralmente
+- Analizar patrones de ataque y establecer contramedidas proactivas 

@@ -1,0 +1,1118 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## 🎯 Propósito
+Establecer un sistema estandarizado y seguro para la gestión, captura y presentación de errores en aplicaciones web, que proporcione información útil para depuración y seguimiento sin comprometer la seguridad, manteniendo una experiencia de usuario adecuada.
+
+---
+
+## 🛡️ Principios de Manejo de Errores Seguro
+
+### 1. Estructura base de errores
+
+```typescript
+// lib/errors/app-error.ts
+export enum ErrorSeverity {
+  INFO = 'info',
+  WARNING = 'warning',
+  ERROR = 'error',
+  CRITICAL = 'critical',
+}
+
+export enum ErrorSource {
+  CLIENT = 'client',
+  SERVER = 'server',
+  DATABASE = 'database',
+  EXTERNAL_SERVICE = 'external_service',
+  SECURITY = 'security',
+  VALIDATION = 'validation',
+  UNKNOWN = 'unknown',
+}
+
+export interface ErrorMetadata {
+  requestId?: string;
+  userId?: string;
+  timestamp: string;
+  stackTrace?: string;
+  component?: string;
+  operation?: string;
+  path?: string;
+  additionalData?: Record<string, any>;
+}
+
+export class AppError extends Error {
+  // Código único para identificar el tipo de error
+  public readonly code: string;
+  
+  // HTTP status code asociado
+  public readonly statusCode: number;
+  
+  // Mensaje público seguro para mostrar al usuario
+  public readonly userMessage: string;
+  
+  // Mensaje interno para logging
+  public readonly internalMessage: string;
+  
+  // Severidad del error
+  public readonly severity: ErrorSeverity;
+  
+  // Fuente u origen del error
+  public readonly source: ErrorSource;
+  
+  // Metadatos adicionales para depuración
+  public readonly metadata: ErrorMetadata;
+  
+  // Error original que causó este error (si existe)
+  public readonly cause?: Error | unknown;
+  
+  constructor({
+    code,
+    statusCode = 500,
+    userMessage,
+    internalMessage,
+    severity = ErrorSeverity.ERROR,
+    source = ErrorSource.UNKNOWN,
+    metadata = {} as ErrorMetadata,
+    cause,
+  }: {
+    code: string;
+    statusCode?: number;
+    userMessage: string;
+    internalMessage?: string;
+    severity?: ErrorSeverity;
+    source?: ErrorSource;
+    metadata?: Partial<ErrorMetadata>;
+    cause?: Error | unknown;
+  }) {
+    // El mensaje que se mostrará cuando se lance el error
+    super(internalMessage || userMessage);
+    
+    this.code = code;
+    this.statusCode = statusCode;
+    this.userMessage = userMessage;
+    this.internalMessage = internalMessage || userMessage;
+    this.severity = severity;
+    this.source = source;
+    this.cause = cause;
+    
+    // Asegurar que timestamp existe en metadata
+    this.metadata = {
+      ...metadata,
+      timestamp: metadata.timestamp || new Date().toISOString(),
+    } as ErrorMetadata;
+    
+    // Capturar stack trace
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, this.constructor);
+    }
+    
+    // Para funcionamiento correcto con instanceof
+    Object.setPrototypeOf(this, AppError.prototype);
+    
+    // Si tenemos un error original, extraer su stack trace
+    if (cause instanceof Error && !metadata.stackTrace) {
+      this.metadata.stackTrace = cause.stack;
+    }
+  }
+  
+  // Generar objeto seguro para enviar al cliente
+  public toJSON() {
+    return {
+      code: this.code,
+      message: this.userMessage,
+      severity: this.severity,
+      requestId: this.metadata.requestId,
+    };
+  }
+  
+  // Generar objeto completo para logging interno
+  public toDetailedJSON() {
+    return {
+      code: this.code,
+      statusCode: this.statusCode,
+      userMessage: this.userMessage,
+      internalMessage: this.internalMessage,
+      severity: this.severity,
+      source: this.source,
+      metadata: this.metadata,
+      stack: this.stack,
+      cause: this.cause instanceof Error ? this.cause.message : this.cause,
+    };
+  }
+}
+```
+
+### 2. Errores específicos predefinidos
+
+```typescript
+// lib/errors/error-types.ts
+import { AppError, ErrorSeverity, ErrorSource } from './app-error';
+
+// Error de validación de datos
+export class ValidationError extends AppError {
+  constructor(
+    userMessage: string,
+    validationErrors: Record<string, string[]> = {},
+    metadata = {}
+  ) {
+    super({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      userMessage,
+      internalMessage: `Validation failed: ${JSON.stringify(validationErrors)}`,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.VALIDATION,
+      metadata: {
+        ...metadata,
+        validationErrors,
+      },
+    });
+  }
+}
+
+// Error de autenticación
+export class AuthenticationError extends AppError {
+  constructor(userMessage = 'Credenciales inválidas', metadata = {}) {
+    super({
+      code: 'AUTHENTICATION_ERROR',
+      statusCode: 401,
+      userMessage,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.SECURITY,
+      metadata,
+    });
+  }
+}
+
+// Error de autorización
+export class AuthorizationError extends AppError {
+  constructor(userMessage = 'No tiene permisos para realizar esta acción', metadata = {}) {
+    super({
+      code: 'AUTHORIZATION_ERROR',
+      statusCode: 403,
+      userMessage,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.SECURITY,
+      metadata,
+    });
+  }
+}
+
+// Error de recurso no encontrado
+export class NotFoundError extends AppError {
+  constructor(resource: string, resourceId?: string, metadata = {}) {
+    const resourceInfo = resourceId ? `${resource} con ID ${resourceId}` : resource;
+    super({
+      code: 'RESOURCE_NOT_FOUND',
+      statusCode: 404,
+      userMessage: `El recurso ${resourceInfo} no fue encontrado`,
+      internalMessage: `Resource not found: ${resourceInfo}`,
+      severity: ErrorSeverity.INFO,
+      source: ErrorSource.SERVER,
+      metadata,
+    });
+  }
+}
+
+// Error de conflicto (entidad duplicada, etc.)
+export class ConflictError extends AppError {
+  constructor(userMessage: string, metadata = {}) {
+    super({
+      code: 'CONFLICT_ERROR',
+      statusCode: 409,
+      userMessage,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.SERVER,
+      metadata,
+    });
+  }
+}
+
+// Error de servicio externo
+export class ExternalServiceError extends AppError {
+  constructor(
+    service: string,
+    userMessage = 'Error al comunicarse con un servicio externo',
+    error?: Error,
+    metadata = {}
+  ) {
+    super({
+      code: 'EXTERNAL_SERVICE_ERROR',
+      statusCode: 502,
+      userMessage,
+      internalMessage: `Error in external service ${service}: ${error?.message || 'Unknown error'}`,
+      severity: ErrorSeverity.ERROR,
+      source: ErrorSource.EXTERNAL_SERVICE,
+      metadata: {
+        ...metadata,
+        service,
+      },
+      cause: error,
+    });
+  }
+}
+
+// Error de base de datos
+export class DatabaseError extends AppError {
+  constructor(
+    operation: string,
+    userMessage = 'Error en la base de datos',
+    error?: Error,
+    metadata = {}
+  ) {
+    super({
+      code: 'DATABASE_ERROR',
+      statusCode: 500,
+      userMessage,
+      internalMessage: `Database error during ${operation}: ${error?.message || 'Unknown error'}`,
+      severity: ErrorSeverity.ERROR,
+      source: ErrorSource.DATABASE,
+      metadata: {
+        ...metadata,
+        operation,
+      },
+      cause: error,
+    });
+  }
+}
+
+// Error interno del servidor
+export class InternalServerError extends AppError {
+  constructor(
+    userMessage = 'Ha ocurrido un error interno del servidor',
+    internalMessage?: string,
+    error?: Error,
+    metadata = {}
+  ) {
+    super({
+      code: 'INTERNAL_SERVER_ERROR',
+      statusCode: 500,
+      userMessage,
+      internalMessage: internalMessage || error?.message || userMessage,
+      severity: ErrorSeverity.ERROR,
+      source: ErrorSource.SERVER,
+      metadata,
+      cause: error,
+    });
+  }
+}
+
+// Error por solicitud no válida
+export class BadRequestError extends AppError {
+  constructor(userMessage: string, metadata = {}) {
+    super({
+      code: 'BAD_REQUEST',
+      statusCode: 400,
+      userMessage,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.CLIENT,
+      metadata,
+    });
+  }
+}
+
+// Error por limitación de tasa (rate limiting)
+export class RateLimitError extends AppError {
+  constructor(
+    resource: string,
+    userMessage = 'Ha excedido el límite de solicitudes permitidas',
+    metadata = {}
+  ) {
+    super({
+      code: 'RATE_LIMIT_EXCEEDED',
+      statusCode: 429,
+      userMessage,
+      internalMessage: `Rate limit exceeded for resource: ${resource}`,
+      severity: ErrorSeverity.WARNING,
+      source: ErrorSource.SECURITY,
+      metadata: {
+        ...metadata,
+        resource,
+      },
+    });
+  }
+}
+```
+
+---
+
+## 🧩 Middleware de Captura de Errores
+
+### 1. Middleware Next.js
+
+```typescript
+// middleware/error-handler.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { AppError, ErrorSeverity } from '@/lib/errors/app-error';
+import { errorLogger } from '@/lib/logger/logger';
+
+export async function handleError(
+  error: unknown,
+  request: NextRequest,
+  response?: NextResponse
+): Promise<NextResponse> {
+  // Si ya tenemos un AppError, lo usamos directamente
+  let appError: AppError;
+  
+  if (error instanceof AppError) {
+    appError = error;
+  } else if (error instanceof Error) {
+    // Convertir error estándar a AppError
+    appError = new AppError({
+      code: 'INTERNAL_SERVER_ERROR',
+      statusCode: 500,
+      userMessage: 'Ha ocurrido un error inesperado',
+      internalMessage: error.message,
+      severity: ErrorSeverity.ERROR,
+      metadata: {
+        requestId: request.headers.get('x-request-id') || undefined,
+        path: request.nextUrl.pathname,
+        stackTrace: error.stack,
+      },
+      cause: error,
+    });
+  } else {
+    // Manejar errores que no son instancias de Error
+    appError = new AppError({
+      code: 'UNKNOWN_ERROR',
+      statusCode: 500,
+      userMessage: 'Ha ocurrido un error inesperado',
+      internalMessage: 'Unknown error object thrown',
+      severity: ErrorSeverity.ERROR,
+      metadata: {
+        requestId: request.headers.get('x-request-id') || undefined,
+        path: request.nextUrl.pathname,
+        error: JSON.stringify(error),
+      },
+    });
+  }
+  
+  // Registrar error en logger
+  errorLogger.error(appError.toDetailedJSON(), `[${appError.code}] ${appError.internalMessage}`);
+  
+  // Crear respuesta con el error
+  const errorResponse = NextResponse.json(
+    appError.toJSON(),
+    { status: appError.statusCode }
+  );
+  
+  // Incluir request-id en las cabeceras
+  if (appError.metadata.requestId) {
+    errorResponse.headers.set('x-request-id', appError.metadata.requestId);
+  }
+  
+  return errorResponse;
+}
+
+// Implementación para rutas de API Next.js
+export async function errorHandlerMiddleware(
+  request: NextRequest,
+  handler: (request: NextRequest) => Promise<NextResponse>
+): Promise<NextResponse> {
+  try {
+    return await handler(request);
+  } catch (error) {
+    return handleError(error, request);
+  }
+}
+```
+
+### 2. Middleware Express
+
+```typescript
+// middleware/express-error-handler.ts
+import { Request, Response, NextFunction } from 'express';
+import { AppError, ErrorSeverity } from '@/lib/errors/app-error';
+import { errorLogger } from '@/lib/logger/logger';
+
+export function errorHandlerMiddleware(
+  error: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  // Si ya tenemos un AppError, lo usamos directamente
+  let appError: AppError;
+  
+  if (error instanceof AppError) {
+    appError = error;
+  } else if (error instanceof Error) {
+    // Convertir error estándar a AppError
+    appError = new AppError({
+      code: 'INTERNAL_SERVER_ERROR',
+      statusCode: 500,
+      userMessage: 'Ha ocurrido un error inesperado',
+      internalMessage: error.message,
+      severity: ErrorSeverity.ERROR,
+      metadata: {
+        requestId: req.headers['x-request-id'] as string,
+        path: req.path,
+        stackTrace: error.stack,
+      },
+      cause: error,
+    });
+  } else {
+    // Manejar errores que no son instancias de Error
+    appError = new AppError({
+      code: 'UNKNOWN_ERROR',
+      statusCode: 500,
+      userMessage: 'Ha ocurrido un error inesperado',
+      internalMessage: 'Unknown error object thrown',
+      severity: ErrorSeverity.ERROR,
+      metadata: {
+        requestId: req.headers['x-request-id'] as string,
+        path: req.path,
+        error: JSON.stringify(error),
+      },
+    });
+  }
+  
+  // Registrar error en logger
+  errorLogger.error(appError.toDetailedJSON(), `[${appError.code}] ${appError.internalMessage}`);
+  
+  // Enviar respuesta con el error
+  res.status(appError.statusCode).json(appError.toJSON());
+}
+
+// Middleware para validación de errores de Express Validator
+export function validationErrorHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const validationErrors = errors.array().reduce((acc, err) => {
+      const field = err.param;
+      if (!acc[field]) acc[field] = [];
+      acc[field].push(err.msg);
+      return acc;
+    }, {} as Record<string, string[]>);
+    
+    const error = new ValidationError(
+      'Los datos proporcionados no son válidos',
+      validationErrors,
+      {
+        requestId: req.headers['x-request-id'] as string,
+        path: req.path,
+      }
+    );
+    
+    return res.status(error.statusCode).json(error.toJSON());
+  }
+  next();
+}
+```
+
+---
+
+## 👥 Manejo de Errores en el Frontend
+
+### 1. Componente de Error Boundary
+
+```tsx
+// components/ErrorBoundary.tsx
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode | ((error: Error, reset: () => void) => ReactNode);
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      error,
+    };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Registrar el error
+    console.error('Error caught by ErrorBoundary:', error, errorInfo);
+    
+    // Enviar a Sentry u otro servicio de monitoreo
+    Sentry.captureException(error);
+    
+    // Llamar al callback onError si existe
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
+  }
+  
+  resetErrorBoundary = () => {
+    this.setState({
+      hasError: false,
+      error: null,
+    });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      // Renderizar el fallback
+      if (this.props.fallback) {
+        if (typeof this.props.fallback === 'function') {
+          return this.props.fallback(
+            this.state.error!,
+            this.resetErrorBoundary
+          );
+        }
+        return this.props.fallback;
+      }
+      
+      // Fallback por defecto
+      return (
+        <div className="error-boundary-fallback">
+          <h2>Ha ocurrido un error</h2>
+          <p>Algo salió mal al cargar este componente.</p>
+          <button onClick={this.resetErrorBoundary}>
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+### 2. Hook para manejo de errores en solicitudes API
+
+```typescript
+// hooks/useApiError.ts
+import { useState, useCallback } from 'react';
+import * as Sentry from '@sentry/react';
+
+interface ApiError {
+  code: string;
+  message: string;
+  severity?: string;
+  requestId?: string;
+  status?: number;
+}
+
+interface UseApiErrorResult {
+  error: ApiError | null;
+  handleError: (error: unknown) => ApiError;
+  clearError: () => void;
+  isError: boolean;
+}
+
+export function useApiError(): UseApiErrorResult {
+  const [error, setError] = useState<ApiError | null>(null);
+  
+  const handleError = useCallback((err: unknown): ApiError => {
+    let apiError: ApiError;
+    
+    // Errores de Axios/Fetch
+    if (err && typeof err === 'object' && 'response' in err) {
+      // Error de Axios
+      const axiosError = err as any;
+      apiError = {
+        code: axiosError.response?.data?.code || 'UNKNOWN_ERROR',
+        message: axiosError.response?.data?.message || 'Error desconocido en la solicitud',
+        severity: axiosError.response?.data?.severity,
+        requestId: axiosError.response?.headers?.['x-request-id'],
+        status: axiosError.response?.status,
+      };
+    } else if (err instanceof Error) {
+      // Error estándar de JavaScript
+      apiError = {
+        code: 'CLIENT_ERROR',
+        message: err.message || 'Ha ocurrido un error inesperado',
+        severity: 'error',
+      };
+    } else {
+      // Otro tipo de error
+      apiError = {
+        code: 'UNKNOWN_ERROR',
+        message: 'Ha ocurrido un error inesperado',
+        severity: 'error',
+      };
+    }
+    
+    // Registrar el error
+    console.error('API Error:', apiError);
+    
+    // Enviar a Sentry con contexto
+    Sentry.withScope(scope => {
+      scope.setTag('error_type', 'api_error');
+      scope.setTag('error_code', apiError.code);
+      if (apiError.requestId) {
+        scope.setTag('request_id', apiError.requestId);
+      }
+      if (apiError.status) {
+        scope.setTag('status_code', apiError.status.toString());
+      }
+      Sentry.captureException(err);
+    });
+    
+    // Actualizar el estado
+    setError(apiError);
+    
+    return apiError;
+  }, []);
+  
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+  
+  return {
+    error,
+    handleError,
+    clearError,
+    isError: error !== null,
+  };
+}
+```
+
+### 3. Componente de mensajes de error
+
+```tsx
+// components/ui/ErrorMessage.tsx
+import React from 'react';
+import { XCircleIcon } from '@heroicons/react/solid';
+
+export interface ErrorMessageProps {
+  title?: string;
+  message: string;
+  code?: string;
+  onDismiss?: () => void;
+  className?: string;
+}
+
+export function ErrorMessage({
+  title = 'Error',
+  message,
+  code,
+  onDismiss,
+  className = '',
+}: ErrorMessageProps) {
+  return (
+    <div className={`bg-red-50 border-l-4 border-red-400 p-4 ${className}`}>
+      <div className="flex items-start">
+        <div className="flex-shrink-0">
+          <XCircleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
+        </div>
+        <div className="ml-3">
+          <h3 className="text-sm font-medium text-red-800">
+            {title}
+            {code && <span className="ml-2 text-xs">({code})</span>}
+          </h3>
+          <div className="mt-2 text-sm text-red-700">{message}</div>
+        </div>
+        {onDismiss && (
+          <div className="ml-auto pl-3">
+            <button
+              type="button"
+              className="inline-flex text-gray-400 hover:text-gray-500"
+              onClick={onDismiss}
+            >
+              <span className="sr-only">Cerrar</span>
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Variante para errores de formularios
+export interface FormErrorsProps {
+  errors: Record<string, string[]>;
+  onDismiss?: () => void;
+  className?: string;
+}
+
+export function FormErrors({
+  errors,
+  onDismiss,
+  className = '',
+}: FormErrorsProps) {
+  // Si no hay errores, no mostrar nada
+  if (!errors || Object.keys(errors).length === 0) {
+    return null;
+  }
+  
+  return (
+    <div className={`bg-red-50 border-l-4 border-red-400 p-4 ${className}`}>
+      <div className="flex">
+        <div className="flex-shrink-0">
+          <XCircleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
+        </div>
+        <div className="ml-3">
+          <h3 className="text-sm font-medium text-red-800">
+            Se encontraron errores en el formulario
+          </h3>
+          <div className="mt-2 text-sm text-red-700">
+            <ul className="list-disc pl-5 space-y-1">
+              {Object.entries(errors).map(([field, messages]) => (
+                messages.map((message, i) => (
+                  <li key={`${field}-${i}`}>
+                    <strong>{field}:</strong> {message}
+                  </li>
+                ))
+              ))}
+            </ul>
+          </div>
+        </div>
+        {onDismiss && (
+          <div className="ml-auto pl-3">
+            <button
+              type="button"
+              className="inline-flex text-gray-400 hover:text-gray-500"
+              onClick={onDismiss}
+            >
+              <span className="sr-only">Cerrar</span>
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## 🔄 Patrones de Uso Práctico
+
+### 1. Controlador Next.js con manejo de errores
+
+```typescript
+// app/api/users/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { errorHandlerMiddleware } from '@/middleware/error-handler';
+import { prisma } from '@/lib/prisma';
+import { NotFoundError, DatabaseError, ValidationError } from '@/lib/errors/error-types';
+import { logger } from '@/lib/logger/logger';
+
+// GET /api/users/[id]
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return errorHandlerMiddleware(request, async () => {
+    const { id } = params;
+    
+    logger.info({ userId: id }, `Fetching user with ID: ${id}`);
+    
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      
+      if (!user) {
+        throw new NotFoundError('Usuario', id);
+      }
+      
+      return NextResponse.json(user);
+    } catch (error) {
+      // Transformar errores de Prisma en errores de aplicación
+      if (error.name === 'PrismaClientKnownRequestError') {
+        throw new DatabaseError(
+          'findUser',
+          'Error al buscar el usuario',
+          error,
+          { userId: id }
+        );
+      }
+      
+      // Re-lanzar otros errores (incluidos nuestros AppError)
+      throw error;
+    }
+  });
+}
+
+// PATCH /api/users/[id]
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return errorHandlerMiddleware(request, async () => {
+    const { id } = params;
+    const requestId = request.headers.get('x-request-id');
+    
+    // Validar formato de datos
+    let data;
+    try {
+      data = await request.json();
+    } catch (error) {
+      throw new ValidationError('El cuerpo de la solicitud no es un JSON válido', 
+        { requestBody: 'Formato JSON inválido' },
+        { requestId }
+      );
+    }
+    
+    // Validar datos
+    const errors: Record<string, string[]> = {};
+    
+    if (data.name !== undefined && (typeof data.name !== 'string' || data.name.length < 2)) {
+      errors.name = ['El nombre debe tener al menos 2 caracteres'];
+    }
+    
+    if (data.email !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (typeof data.email !== 'string' || !emailRegex.test(data.email)) {
+        errors.email = ['Email no válido'];
+      }
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      throw new ValidationError('Datos de usuario no válidos', errors, { requestId });
+    }
+    
+    logger.info({ userId: id, updates: Object.keys(data) }, `Updating user with ID: ${id}`);
+    
+    try {
+      // Verificar que el usuario existe
+      const existingUser = await prisma.user.findUnique({
+        where: { id },
+      });
+      
+      if (!existingUser) {
+        throw new NotFoundError('Usuario', id, { requestId });
+      }
+      
+      // Actualizar usuario
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          updatedAt: true,
+        },
+      });
+      
+      return NextResponse.json(updatedUser);
+    } catch (error) {
+      // Transformar errores específicos
+      if (error.code === 'P2002') {
+        throw new ConflictError(
+          'El email ya está en uso',
+          { requestId, field: error.meta?.target?.[0] }
+        );
+      }
+      
+      if (error.name === 'PrismaClientKnownRequestError') {
+        throw new DatabaseError(
+          'updateUser',
+          'Error al actualizar el usuario',
+          error,
+          { userId: id, requestId }
+        );
+      }
+      
+      // Re-lanzar otros errores
+      throw error;
+    }
+  });
+}
+```
+
+### 2. Página con manejo de errores en React
+
+```tsx
+// pages/users/[id].tsx
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorMessage } from '@/components/ui/ErrorMessage';
+import { useApiError } from '@/hooks/useApiError';
+import { getUserById, updateUser } from '@/lib/api/users';
+
+export default function UserPage() {
+  return (
+    <ErrorBoundary
+      fallback={(error, reset) => (
+        <div className="p-8">
+          <h1 className="text-2xl font-bold mb-4">Error en la página de usuario</h1>
+          <ErrorMessage
+            title="Error al cargar la página"
+            message={error.message}
+          />
+          <button
+            onClick={reset}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+    >
+      <UserDetail />
+    </ErrorBoundary>
+  );
+}
+
+function UserDetail() {
+  const router = useRouter();
+  const { id } = router.query;
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { error, handleError, clearError } = useApiError();
+  
+  // Formulario
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  
+  useEffect(() => {
+    if (!id) return;
+    
+    async function loadUser() {
+      setLoading(true);
+      try {
+        const userData = await getUserById(id as string);
+        setUser(userData);
+        setName(userData.name);
+        setEmail(userData.email);
+      } catch (err) {
+        handleError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadUser();
+  }, [id, handleError]);
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormSubmitting(true);
+    clearError();
+    
+    try {
+      const updatedUser = await updateUser(id as string, { name, email });
+      setUser(updatedUser);
+      alert('Usuario actualizado con éxito');
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+  
+  if (loading) {
+    return <div>Cargando usuario...</div>;
+  }
+  
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Detalles del Usuario</h1>
+      
+      {error && (
+        <ErrorMessage
+          message={error.message}
+          code={error.code}
+          onDismiss={clearError}
+          className="mb-4"
+        />
+      )}
+      
+      {user ? (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold mb-2">Información</h2>
+            <p><strong>ID:</strong> {user.id}</p>
+            <p><strong>Rol:</strong> {user.role}</p>
+            <p><strong>Creado:</strong> {new Date(user.createdAt).toLocaleString()}</p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="max-w-md">
+            <h2 className="text-xl font-semibold mb-4">Editar Usuario</h2>
+            
+            <div className="mb-4">
+              <label className="block mb-1">Nombre</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            
+            <button
+              type="submit"
+              disabled={formSubmitting}
+              className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-blue-300"
+            >
+              {formSubmitting ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <p>No se encontró información del usuario</p>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Error Handling)
+
+- Utilizar una estructura estandarizada para todos los errores de la aplicación
+- Separar claramente los mensajes de error públicos (para usuarios) y privados (para logs)
+- Incluir siempre un código de error único para facilitar la identificación y depuración
+- Mantener consistencia en los códigos HTTP de respuesta según el tipo de error
+- No exponer detalles de implementación, stack traces o mensajes de sistema en respuestas públicas
+- Capturar y traducir errores de librerías externas a errores propios de la aplicación
+- Incluir siempre un identificador de petición (request-id) en logs y respuestas de error
+- Implementar Error Boundaries en interfaces de usuario React
+- Centralizar el manejo de errores en middleware para endpoints API
+- Registrar todos los errores con nivel de log apropiado y detalles contextuales
+- Asegurar que errores inesperados no exponen información sensible
+- Implementar mensajes de error claros y orientados a la acción para el usuario final
+- Categorizar errores por severidad para priorizar resolución y alertas
+- Agrupar errores relacionados para evitar cascadas de notificaciones
+- Normalizar mensajes de error para facilitar análisis y búsqueda
+- Capturar y registrar contexto adicional (estado, parámetros) cuando sea relevante
+- Implementar adecuada validación de entradas para prevenir errores predecibles
+- Mantener documentación actualizada de códigos de error y su significado
+- Asegurar que los errores críticos generen alertas inmediatas al equipo
+- Utilizar componentes UI específicos para diferentes tipos y contextos de error

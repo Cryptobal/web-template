@@ -1,0 +1,945 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: schema-org.mdc
+
+## 🎯 Propósito
+Definir la implementación completa y sistemática de datos estructurados Schema.org para el sitio web, mejorando su comprensión por parte de los motores de búsqueda, incrementando la visibilidad en resultados enriquecidos de Google y mejorando el SEO técnico.
+
+---
+
+## 🧩 Arquitectura de datos estructurados
+
+### 1. Tipos principales de datos estructurados
+
+| Página/Contexto | Tipo Schema.org | Beneficio SEO |
+|----------------|-----------------|---------------|
+| Página principal | WebSite, Organization | Rich Results de sitio |
+| Páginas de servicio | Service, Product | Rich Results de producto/servicio |
+| Blog (listado) | Blog, ItemList | Mejor indexación del blog |
+| Artículo de blog | Article, BlogPosting | Rich Results de artículo |
+| Páginas de contacto | LocalBusiness | Rich Results de negocio local |
+| FAQs | FAQPage, Question | Rich Results de FAQ |
+| Eventos | Event | Rich Results de evento |
+| Reseñas/Testimoniales | Review, AggregateRating | Estrellas en resultados |
+| Breadcrumbs | BreadcrumbList | Ruta de navegación en resultados |
+
+---
+
+## 📄 Implementación en páginas principales
+
+### 1. Página de inicio
+
+```tsx
+// app/JsonLd.tsx (componente reutilizable)
+import { Organization, WebSite, WithContext } from 'schema-dts';
+
+interface WebsiteSchemaProps {
+  url: string;
+  name: string;
+  description: string;
+  logoUrl: string;
+  siteLinks?: string[];
+}
+
+export function WebsiteSchema({
+  url,
+  name,
+  description,
+  logoUrl,
+  siteLinks = [],
+}: WebsiteSchemaProps) {
+  // Esquema para WebSite
+  const websiteSchema: WithContext<WebSite> = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name,
+    description,
+    url,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${url}/buscar?q={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+    />
+  );
+}
+
+export function OrganizationSchema({
+  url,
+  name,
+  description,
+  logoUrl,
+  siteLinks = [],
+}: WebsiteSchemaProps) {
+  // Esquema para Organization
+  const organizationSchema: WithContext<Organization> = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name,
+    description,
+    url,
+    logo: logoUrl,
+    sameAs: siteLinks, // Enlaces a redes sociales
+    contactPoint: {
+      '@type': 'ContactPoint',
+      telephone: '+56 9 1234 5678',
+      contactType: 'customer service',
+      areaServed: 'CL',
+      availableLanguage: 'Spanish',
+    },
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+    />
+  );
+}
+
+// Uso en la página principal
+// app/page.tsx
+import { WebsiteSchema, OrganizationSchema } from './JsonLd';
+
+export default function HomePage() {
+  return (
+    <>
+      {/* Contenido visible de la página */}
+      <main>...</main>
+      
+      {/* Datos estructurados */}
+      <WebsiteSchema
+        name="Tu Empresa"
+        description="Descripción de tu empresa y servicios principales."
+        url="https://tusitio.com"
+        logoUrl="https://cdn.tusitio.com/logos/logo.png"
+      />
+      <OrganizationSchema
+        name="Tu Empresa"
+        description="Descripción de tu empresa y servicios principales."
+        url="https://tusitio.com"
+        logoUrl="https://cdn.tusitio.com/logos/logo.png"
+        siteLinks={[
+          'https://facebook.com/tuempresa',
+          'https://twitter.com/tuempresa',
+          'https://linkedin.com/company/tuempresa',
+        ]}
+      />
+    </>
+  );
+}
+```
+
+### 2. Página de servicio/producto
+
+```tsx
+// components/schema/ProductSchema.tsx
+import { Product, WithContext } from 'schema-dts';
+
+interface ProductSchemaProps {
+  name: string;
+  description: string;
+  image: string;
+  sku?: string;
+  brand?: string;
+  price?: number;
+  priceCurrency?: string;
+  availability?: 'InStock' | 'OutOfStock' | 'PreOrder';
+  url: string;
+  reviewCount?: number;
+  ratingValue?: number;
+  category?: string;
+}
+
+export function ProductSchema({
+  name,
+  description,
+  image,
+  sku,
+  brand,
+  price,
+  priceCurrency = 'CLP',
+  availability = 'InStock',
+  url,
+  reviewCount,
+  ratingValue,
+  category,
+}: ProductSchemaProps) {
+  const productSchema: WithContext<Product> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name,
+    description,
+    image,
+    sku,
+    brand: brand ? { '@type': 'Brand', name: brand } : undefined,
+    category,
+    url,
+  };
+
+  // Agregar precio si está disponible
+  if (price !== undefined) {
+    productSchema.offers = {
+      '@type': 'Offer',
+      price: price.toString(),
+      priceCurrency,
+      availability: `https://schema.org/${availability}`,
+      url,
+    };
+  }
+
+  // Agregar reviews si están disponibles
+  if (reviewCount !== undefined && ratingValue !== undefined) {
+    productSchema.aggregateRating = {
+      '@type': 'AggregateRating',
+      ratingValue: ratingValue.toString(),
+      reviewCount: reviewCount.toString(),
+    };
+  }
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+    />
+  );
+}
+
+// Uso en página de producto/servicio
+export default function ServicioPage() {
+  return (
+    <>
+      {/* Contenido visible */}
+      <main>...</main>
+      
+      {/* Datos estructurados */}
+      <ProductSchema
+        name="Servicio de Automatización"
+        description="Nuestro servicio de automatización industrial ayuda a mejorar la eficiencia de su planta en un 35%."
+        image="https://cdn.tusitio.com/servicios/automatizacion.jpg"
+        brand="Tu Empresa"
+        price={1500000}
+        priceCurrency="CLP"
+        url="https://tusitio.com/servicios/automatizacion"
+        reviewCount={24}
+        ratingValue={4.8}
+        category="Servicios Industriales"
+      />
+    </>
+  );
+}
+```
+
+---
+
+## 📝 Blog y artículos con Schema.org
+
+### 1. Listado de blog
+
+```tsx
+// app/blog/page.tsx
+import { Blog, ItemList, WithContext } from 'schema-dts';
+import { getAllPosts } from '@/lib/api';
+
+export default async function BlogIndexPage() {
+  const posts = await getAllPosts();
+  
+  // Esquema para el blog
+  const blogSchema: WithContext<Blog> = {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: 'Blog de Tu Empresa',
+    description: 'Artículos sobre tecnología, industria y automatización',
+    url: 'https://tusitio.com/blog',
+  };
+  
+  // Esquema para la lista de artículos
+  const itemListSchema: WithContext<ItemList> = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: posts.map((post, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      url: `https://tusitio.com/blog/${post.slug}`,
+    })),
+  };
+  
+  return (
+    <>
+      {/* Contenido visible */}
+      <main>
+        <h1>Blog</h1>
+        <div className="posts-grid">
+          {posts.map(post => (
+            <PostCard key={post.id} post={post} />
+          ))}
+        </div>
+      </main>
+      
+      {/* Datos estructurados */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+      />
+    </>
+  );
+}
+```
+
+### 2. Artículo individual
+
+```tsx
+// app/blog/[slug]/page.tsx
+import { BlogPosting, WithContext } from 'schema-dts';
+import { getPostBySlug } from '@/lib/api';
+
+export default async function BlogPostPage({ params }: { params: { slug: string } }) {
+  const post = await getPostBySlug(params.slug);
+  
+  // Esquema para el artículo
+  const articleSchema: WithContext<BlogPosting> = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.excerpt,
+    image: post.coverImage,
+    datePublished: post.date,
+    dateModified: post.lastUpdated || post.date,
+    author: {
+      '@type': 'Person',
+      name: post.author.name,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Tu Empresa',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://cdn.tusitio.com/logos/logo.png',
+      },
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `https://tusitio.com/blog/${post.slug}`,
+    },
+    keywords: post.tags.join(', '),
+  };
+  
+  return (
+    <>
+      {/* Contenido visible */}
+      <article>
+        <h1>{post.title}</h1>
+        <div dangerouslySetInnerHTML={{ __html: post.content }} />
+      </article>
+      
+      {/* Datos estructurados */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}
+      />
+    </>
+  );
+}
+```
+
+---
+
+## 📍 Información de negocio local
+
+```tsx
+// components/schema/LocalBusinessSchema.tsx
+import { LocalBusiness, WithContext } from 'schema-dts';
+
+interface LocalBusinessSchemaProps {
+  name: string;
+  description: string;
+  url: string;
+  logoUrl: string;
+  telephone: string;
+  email: string;
+  address: {
+    streetAddress: string;
+    addressLocality: string;
+    addressRegion: string;
+    postalCode: string;
+    addressCountry: string;
+  };
+  geo?: {
+    latitude: number;
+    longitude: number;
+  };
+  openingHours?: string[];
+  priceRange?: string;
+  currenciesAccepted?: string;
+}
+
+export function LocalBusinessSchema({
+  name,
+  description,
+  url,
+  logoUrl,
+  telephone,
+  email,
+  address,
+  geo,
+  openingHours = ['Mo-Fr 09:00-18:00'],
+  priceRange = '$$$',
+  currenciesAccepted = 'CLP',
+}: LocalBusinessSchemaProps) {
+  const businessSchema: WithContext<LocalBusiness> = {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name,
+    description,
+    url,
+    logo: logoUrl,
+    image: logoUrl,
+    telephone,
+    email,
+    priceRange,
+    currenciesAccepted,
+    address: {
+      '@type': 'PostalAddress',
+      ...address,
+    },
+    openingHoursSpecification: openingHours.map(hours => ({
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: hours.split(' ')[0],
+      opens: hours.split(' ')[1].split('-')[0],
+      closes: hours.split(' ')[1].split('-')[1],
+    })),
+  };
+  
+  // Añadir coordenadas geográficas si están disponibles
+  if (geo) {
+    businessSchema.geo = {
+      '@type': 'GeoCoordinates',
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+    };
+  }
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(businessSchema) }}
+    />
+  );
+}
+
+// Uso en página de contacto
+export default function ContactoPage() {
+  return (
+    <>
+      {/* Contenido visible */}
+      <main>
+        <h1>Contacto</h1>
+        {/* Formulario y detalles de contacto */}
+      </main>
+      
+      {/* Datos estructurados */}
+      <LocalBusinessSchema
+        name="Tu Empresa"
+        description="Servicios de automatización industrial y tecnología."
+        url="https://tusitio.com"
+        logoUrl="https://cdn.tusitio.com/logos/logo.png"
+        telephone="+56 9 1234 5678"
+        email="contacto@tusitio.com"
+        address={{
+          streetAddress: "Av. Apoquindo 5555, Oficina 1201",
+          addressLocality: "Las Condes",
+          addressRegion: "Región Metropolitana",
+          postalCode: "7550000",
+          addressCountry: "CL",
+        }}
+        geo={{
+          latitude: -33.4127,
+          longitude: -70.5791,
+        }}
+        openingHours={['Mo-Fr 09:00-18:00']}
+      />
+    </>
+  );
+}
+```
+
+---
+
+## ❓ Preguntas frecuentes (FAQs)
+
+```tsx
+// components/schema/FAQSchema.tsx
+import { FAQPage, WithContext } from 'schema-dts';
+
+interface FAQItem {
+  question: string;
+  answer: string;
+}
+
+interface FAQSchemaProps {
+  faqs: FAQItem[];
+}
+
+export function FAQSchema({ faqs }: FAQSchemaProps) {
+  const faqSchema: WithContext<FAQPage> = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map(faq => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer,
+      },
+    })),
+  };
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+    />
+  );
+}
+
+// Uso en página de preguntas frecuentes
+export default function FAQPage() {
+  const faqs = [
+    {
+      question: "¿Cuánto tiempo toma implementar un sistema de automatización?",
+      answer: "El tiempo de implementación varía según la complejidad, pero generalmente entre 3 y 8 semanas para una solución completa.",
+    },
+    {
+      question: "¿Ofrecen soporte técnico después de la implementación?",
+      answer: "Sí, ofrecemos planes de soporte técnico 24/7 y mantenimiento preventivo para todos nuestros sistemas implementados.",
+    },
+    // Más preguntas...
+  ];
+  
+  return (
+    <>
+      {/* Contenido visible */}
+      <main>
+        <h1>Preguntas Frecuentes</h1>
+        <dl>
+          {faqs.map((faq, index) => (
+            <div key={index} className="faq-item">
+              <dt>{faq.question}</dt>
+              <dd>{faq.answer}</dd>
+            </div>
+          ))}
+        </dl>
+      </main>
+      
+      {/* Datos estructurados */}
+      <FAQSchema faqs={faqs} />
+    </>
+  );
+}
+```
+
+---
+
+## 🧭 Breadcrumbs
+
+```tsx
+// components/Breadcrumbs.tsx
+import Link from 'next/link';
+import { BreadcrumbList, WithContext } from 'schema-dts';
+
+interface Breadcrumb {
+  name: string;
+  url: string;
+  current?: boolean;
+}
+
+interface BreadcrumbsProps {
+  items: Breadcrumb[];
+}
+
+export function Breadcrumbs({ items }: BreadcrumbsProps) {
+  // Datos para esquema
+  const breadcrumbSchema: WithContext<BreadcrumbList> = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+  
+  return (
+    <>
+      {/* Breadcrumbs visibles */}
+      <nav aria-label="Breadcrumb" className="breadcrumbs">
+        <ol>
+          {items.map((item, index) => (
+            <li key={item.url}>
+              {index > 0 && <span className="separator">/</span>}
+              {item.current ? (
+                <span aria-current="page">{item.name}</span>
+              ) : (
+                <Link href={item.url}>{item.name}</Link>
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
+      
+      {/* Datos estructurados */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
+    </>
+  );
+}
+
+// Uso en cualquier página
+export default function ServicioPage() {
+  return (
+    <>
+      <Breadcrumbs
+        items={[
+          { name: 'Inicio', url: '/' },
+          { name: 'Servicios', url: '/servicios' },
+          { name: 'Automatización', url: '/servicios/automatizacion', current: true },
+        ]}
+      />
+      
+      {/* Resto del contenido */}
+    </>
+  );
+}
+```
+
+---
+
+## 🌟 Reseñas y valoraciones
+
+```tsx
+// components/schema/ReviewSchema.tsx
+import { AggregateRating, Review, WithContext } from 'schema-dts';
+
+interface ReviewSchemaProps {
+  itemReviewed: {
+    name: string;
+    description: string;
+    url: string;
+    image?: string;
+    type: 'Product' | 'Service' | 'LocalBusiness';
+  };
+  reviews: Array<{
+    author: string;
+    datePublished: string;
+    reviewBody: string;
+    reviewRating: number;
+  }>;
+}
+
+export function ReviewSchema({ itemReviewed, reviews }: ReviewSchemaProps) {
+  // Calcular puntuación promedio
+  const averageRating = reviews.reduce((sum, review) => sum + review.reviewRating, 0) / reviews.length;
+  
+  // Esquema para una reseña individual
+  const singleReviewSchema: WithContext<Review> = {
+    '@context': 'https://schema.org',
+    '@type': 'Review',
+    itemReviewed: {
+      '@type': itemReviewed.type,
+      name: itemReviewed.name,
+      description: itemReviewed.description,
+      url: itemReviewed.url,
+      image: itemReviewed.image,
+    },
+    reviewRating: {
+      '@type': 'Rating',
+      ratingValue: reviews[0].reviewRating.toString(),
+      bestRating: '5',
+    },
+    datePublished: reviews[0].datePublished,
+    author: {
+      '@type': 'Person',
+      name: reviews[0].author,
+    },
+    reviewBody: reviews[0].reviewBody,
+  };
+  
+  // Esquema para rating agregado
+  const aggregateRatingSchema: WithContext<AggregateRating> = {
+    '@context': 'https://schema.org',
+    '@type': 'AggregateRating',
+    itemReviewed: {
+      '@type': itemReviewed.type,
+      name: itemReviewed.name,
+      description: itemReviewed.description,
+      url: itemReviewed.url,
+      image: itemReviewed.image,
+    },
+    ratingValue: averageRating.toFixed(1),
+    reviewCount: reviews.length.toString(),
+    bestRating: '5',
+  };
+  
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(singleReviewSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(aggregateRatingSchema) }}
+      />
+    </>
+  );
+}
+
+// Uso en página de testimoniales o productos
+export default function TestimonialsPage() {
+  const reviews = [
+    {
+      author: "Juan Pérez",
+      datePublished: "2023-04-15",
+      reviewBody: "Excelente servicio, mejoró la eficiencia de nuestra planta en un 40%.",
+      reviewRating: 5,
+    },
+    {
+      author: "María González",
+      datePublished: "2023-03-22",
+      reviewBody: "Muy profesionales en su trabajo de automatización.",
+      reviewRating: 4,
+    },
+    // Más reseñas...
+  ];
+  
+  return (
+    <>
+      {/* Contenido visible */}
+      <main>
+        <h1>Testimonios de Clientes</h1>
+        {/* Lista de testimonios */}
+      </main>
+      
+      {/* Datos estructurados */}
+      <ReviewSchema
+        itemReviewed={{
+          type: 'Service',
+          name: 'Servicio de Automatización',
+          description: 'Soluciones de automatización industrial para empresas.',
+          url: 'https://tusitio.com/servicios/automatizacion',
+          image: 'https://cdn.tusitio.com/servicios/automatizacion.jpg',
+        }}
+        reviews={reviews}
+      />
+    </>
+  );
+}
+```
+
+---
+
+## 🗺️ Implementación global
+
+### 1. Provider centralizado para Schema.org
+
+```tsx
+// components/schema/SchemaProvider.tsx
+import React from 'react';
+import { WebsiteSchema, OrganizationSchema } from './JsonLd';
+
+interface SchemaProviderProps {
+  children: React.ReactNode;
+  pageSchema?: React.ReactNode; // Para esquemas específicos de página
+}
+
+export function SchemaProvider({ children, pageSchema }: SchemaProviderProps) {
+  // Datos comunes
+  const companyInfo = {
+    name: 'Tu Empresa',
+    description: 'Descripción de tu empresa y servicios principales.',
+    url: 'https://tusitio.com',
+    logoUrl: 'https://cdn.tusitio.com/logos/logo.png',
+    siteLinks: [
+      'https://facebook.com/tuempresa',
+      'https://twitter.com/tuempresa',
+      'https://linkedin.com/company/tuempresa',
+    ],
+  };
+  
+  return (
+    <>
+      {children}
+      
+      {/* Esquemas globales */}
+      <WebsiteSchema
+        name={companyInfo.name}
+        description={companyInfo.description}
+        url={companyInfo.url}
+        logoUrl={companyInfo.logoUrl}
+      />
+      <OrganizationSchema
+        name={companyInfo.name}
+        description={companyInfo.description}
+        url={companyInfo.url}
+        logoUrl={companyInfo.logoUrl}
+        siteLinks={companyInfo.siteLinks}
+      />
+      
+      {/* Esquema específico de página */}
+      {pageSchema}
+    </>
+  );
+}
+
+// Uso en página específica
+export default function ProductPage() {
+  return (
+    <SchemaProvider
+      pageSchema={
+        <ProductSchema
+          name="Servicio Premium"
+          description="Descripción detallada..."
+          // Resto de propiedades
+        />
+      }
+    >
+      {/* Contenido de la página */}
+    </SchemaProvider>
+  );
+}
+```
+
+### 2. Middleware para auto-inserción
+
+```typescript
+// lib/schema/schemaMiddleware.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Añadir SameAs para redes sociales como HTTP Headers (alternativa)
+  response.headers.set('Link', '<https://facebook.com/tuempresa>; rel="https://schema.org/sameAs"');
+  response.headers.set('Link', '<https://twitter.com/tuempresa>; rel="https://schema.org/sameAs"');
+  response.headers.set('Link', '<https://linkedin.com/company/tuempresa>; rel="https://schema.org/sameAs"');
+  
+  return response;
+}
+```
+
+---
+
+## 🧪 Testing y validación
+
+```typescript
+// scripts/validate-schema.js
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+
+// URLs para validar
+const URLS = [
+  'https://tusitio.com',
+  'https://tusitio.com/servicios/automatizacion',
+  'https://tusitio.com/blog/ejemplo-articulo',
+  'https://tusitio.com/contacto',
+];
+
+// Validar Schema.org usando Google Rich Results Test API
+async function validateSchema(url) {
+  console.log(`Validando Schema.org en: ${url}`);
+  
+  const options = {
+    hostname: 'search.google.com',
+    path: `/test/rich-results/api/validate?url=${encodeURIComponent(url)}`,
+    method: 'GET',
+  };
+  
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      reject(error);
+    });
+    
+    req.end();
+  });
+}
+
+// Ejecutar validación para todas las URLs
+async function validateAllUrls() {
+  for (const url of URLS) {
+    try {
+      const result = await validateSchema(url);
+      
+      if (result.errors && result.errors.length > 0) {
+        console.error(`❌ Errores en ${url}:`);
+        result.errors.forEach((error) => {
+          console.error(`  - ${error.message}`);
+        });
+      } else {
+        console.log(`✅ Schema.org válido en ${url}`);
+        
+        if (result.richResults && result.richResults.length > 0) {
+          console.log(`  Rich Results detectados: ${result.richResults.map(r => r.type).join(', ')}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error al validar ${url}:`, error);
+    }
+  }
+}
+
+// Ejecutar script
+validateAllUrls();
+```
+
+---
+
+## 🛠️ Reglas para Cursor (SEO)
+
+- Implementar Schema.org completo en todas las páginas usando el componente SchemaProvider
+- Incluir siempre los esquemas Organization y WebSite en página principal
+- Usar BreadcrumbList en todas las páginas exceptuando la página principal
+- Implementar BlogPosting con todos los campos requeridos para artículos
+- Usar FAQPage para secciones de preguntas frecuentes
+- Para servicios/productos, incluir Product o Service según corresponda
+- Mantener consistencia con datos de contacto en LocalBusiness
+- Validar periódicamente los esquemas contra Google Rich Results Test
+- Incluir datos de rating agregados para servicios con testimonios
+- Asegurar que todas las URLs en los esquemas sean absolutas y canónicas

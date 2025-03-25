@@ -1,0 +1,98 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: header.mdc
+
+## 🎯 Propósito
+Definir la estructura, diseño y funcionalidad del componente `<Header />`, encargado de la navegación principal del sitio web. Debe ser claro, accesible, responsivo y coherente con la identidad visual del proyecto.
+
+---
+
+## 🧱 Estructura del componente
+
+### 1. Branding
+- Logo principal a la izquierda
+- El logo debe enlazar a `/`
+- Debe tener `alt="Logo de [Nombre del Sitio]"`
+
+### 2. Navegación principal (desktop)
+- Enlaces visibles en horizontal
+- Items sugeridos:
+  - Inicio
+  - ¿Quiénes somos?
+  - Servicios (con submenú desplegable)
+  - Industrias (con submenú)
+  - Blog
+  - Contacto
+  - Cotizar
+
+### 3. Navegación mobile
+- Menú hamburguesa
+- Al abrir, mostrar el menú completo en vertical
+- Botones de acción destacados al final (ej: "Cotizar", "Contacto")
+
+---
+
+## 📲 Botones destacados (CTA)
+
+- Mostrar botón primario: “Cotizar Solución”
+- Ubicado a la derecha en desktop
+- Dentro del menú móvil en mobile
+- Opcional: segundo botón “Contacto”
+
+---
+
+## 🎨 Diseño UI/UX
+
+- Layout tipo sticky (`position: sticky; top: 0;`)
+- Fondo blanco o neutro con transparencia al hacer scroll
+- Border bottom sutil (`border-b`)
+- Logo SVG o PNG optimizado desde CDN
+- Menú mobile con animación (ej: `framer-motion`)
+
+---
+
+## 🧠 Accesibilidad
+
+- Todos los ítems deben ser accesibles por teclado
+- `aria-label` para botones del menú
+- Menú desplegable con navegación por teclado y cierre con `Esc`
+- Contraste alto entre texto y fondo
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Componente ubicado en `/components/layout/Header.tsx`
+- Exportado como componente global `<Header />`
+- Estilizado completamente con TailwindCSS
+- Submenús gestionados con `useState()` o `useDisclosure()`
+- Adaptado a mobile-first y modo oscuro (`dark:`)
+- Logo cargado desde CDN (ej: `cdn.tusitio.com/logos/logo.svg`)
+- Compatible con Next.js App Router
+
+```tsx
+export default function Header() {
+  return (
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-neutral-200">
+      {/* contenido */}
+    </header>
+  )
+}
+
+📈 Mejores prácticas SEO
+	•	Usar etiquetas semánticas (<header>, <nav>, <ul>)
+	•	Evitar anidamientos excesivos
+	•	Links claros con nombres de destino (no solo íconos)
+
+⸻
+
+✅ Comportamiento esperado
+	•	Siempre visible al hacer scroll (sticky)
+	•	Se oculta el menú móvil al navegar a una nueva página
+	•	Submenús colapsan automáticamente al hacer click afuera
+	•	Menú mobile debe estar optimizado para pantallas <640px
+  •	Compatible con uso de teclado y lector de pantalla
+  

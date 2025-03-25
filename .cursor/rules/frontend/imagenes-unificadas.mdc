@@ -1,0 +1,149 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # Regla: Optimización y Uso de Imágenes
+
+## 🎯 Propósito
+Establecer buenas prácticas para el manejo, carga, uso y optimización de imágenes en el sitio web. El objetivo es asegurar rendimiento, accesibilidad, compatibilidad con SEO y correcta organización de los recursos visuales del proyecto.
+
+---
+
+## ☁️ CDN y Origen de las Imágenes
+
+Todas las imágenes deben alojarse en un CDN externo optimizado: 
+```
+https://cdn.tusitio.com/
+```
+
+Este dominio debe ser autorizado en la configuración del proyecto y es preferible usar servicios como Cloudflare Images, AWS S3 + CloudFront, o similares para obtener:
+- Servicio desde edge CDN global
+- Optimización automática (WebP, resize, compresión)
+- Reducción de tamaño y tiempo de carga
+- Mejora de Core Web Vitals (LCP, CLS)
+
+---
+
+## 🧱 Organización de carpetas en el CDN
+
+- `/logos/` → Logotipos de clientes, partners o marca
+- `/equipo/` → Fotos del equipo o fundadores
+- `/blog/` → Imágenes para artículos del blog
+- `/industrias/` → Fotos referenciales por vertical o rubro
+- `/servicios/` → Gráficos e ilustraciones por tipo de servicio
+- `/casos/` → Casos de éxito, proyectos, antes/después
+- `/ui/` → Íconos, elementos de interfaz personalizados
+- `/clientes/` → Logos o imágenes de clientes
+
+---
+
+## 🧠 Naming Convention
+
+- Solo usar **minúsculas**, sin acentos ni espacios
+- Separar palabras con guión medio (`-`)
+- Usar nombres descriptivos y breves
+- Evitar duplicados y nombres genéricos
+
+### Ejemplos válidos:
+- `equipo-carlos-soto.jpg`
+- `blog-automatizacion-retail.webp`
+- `icono-inteligencia-artificial.svg`
+- `logo-empresa.svg`
+
+---
+
+## 📐 Dimensiones y formatos recomendados
+
+| Uso                      | Tamaño (px)      | Formato      |
+|--------------------------|------------------|--------------|
+| Hero principal           | 1920x1080        | WebP         |
+| Blog / OG                | 1200x630         | WebP o JPG   |
+| Cards UI                 | 600x400          | WebP         |
+| Íconos                   | Variable         | SVG          |
+
+**Formatos preferidos:**
+- `.webp` (primera opción para fotografías y gráficos)
+- `.svg` para íconos y gráficos vectoriales
+- `.jpg` o `.png` solo cuando sea estrictamente necesario
+
+---
+
+## 🧩 Uso en Next.js
+
+Usar siempre el componente optimizado:
+
+```tsx
+import Image from 'next/image'
+
+<Image
+  src="https://cdn.tusitio.com/blog/automatizacion-industrial.webp"
+  alt="Panel de control automatizado en planta industrial"
+  width={1200}
+  height={630}
+  className="rounded-lg"
+/>
+```
+
+### ⚙️ Configuración para next.config.js
+```js
+module.exports = {
+  images: {
+    domains: ['cdn.tusitio.com'],
+    formats: ['image/webp'],
+  },
+}
+```
+
+---
+
+## 🛡️ Accesibilidad y SEO
+
+- El atributo `alt` es **obligatorio** y debe ser descriptivo y relevante
+- No incluir texto importante dentro de las imágenes (usar HTML visible)
+- Todas las imágenes deben ser lazy-loaded por defecto
+- Usar nombres de archivo con palabras clave si son visibles en URLs
+- Evitar texto importante dentro de la imagen
+- Asegurar suficiente contraste en imágenes con texto
+
+---
+
+## 🚫 Prácticas prohibidas
+
+- Usar `<img src="...">` directo sin pasar por Next.js `<Image />`
+- Imágenes desde dominios externos no autorizados (WhatsApp, Facebook, Google Drive, etc.)
+- Usar `layout='fill'` sin controlar adecuadamente el contenedor
+- Cargar imágenes sin especificar dimensiones explícitas
+- Duplicar imágenes con distinta resolución o peso
+
+---
+
+## 📈 Recomendaciones adicionales
+
+- Optimizar imágenes antes de subirlas (usando Squoosh, TinyPNG, etc.)
+- Si se usan íconos o gráficos simples, priorizar SVG
+- Para imágenes responsivas, usar los atributos `sizes` y `srcSet`
+- Considerar el uso de `priority` para imágenes LCP (Largest Contentful Paint)
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Todas las imágenes deben usarse a través de `<Image />` de Next.js
+- No se permite el uso directo de `<img>`
+- Las rutas deben apuntar a un CDN aprobado
+- Las imágenes deben venir de carpetas organizadas según esta convención
+- Los atributos `alt`, `width` y `height` son requeridos en todos los casos
+- Cualquier imagen no alojada en el CDN oficial debe ser migrada
+
+---
+
+## ✅ Checklist final
+
+- [ ] Imagen subida al CDN correcto
+- [ ] Nombre de archivo limpio, descriptivo y sin espacios
+- [ ] Formato optimizado (WebP o SVG preferidos)
+- [ ] Tamaño adecuado para su uso
+- [ ] Atributo `alt` definido correctamente
+- [ ] Componente `<Image />` utilizado adecuadamente
+- [ ] Ruta configurada en next.config.js

@@ -1,0 +1,381 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: code-standards.mdc
+
+## 🎯 Propósito
+Establecer estándares de código claros y consistentes para todo el proyecto, asegurando mantenibilidad, legibilidad y calidad. Este documento define las convenciones, patrones y mejores prácticas que todos los desarrolladores deben seguir.
+
+---
+
+## 📐 Estilo de código
+
+### 1. Formateo y lint
+
+#### Herramientas utilizadas
+- **Prettier**: Formato automático de código
+- **ESLint**: Análisis estático y reglas de estilo
+- **TypeScript**: Verificación de tipos
+
+#### Configuración base
+```json
+// .prettierrc
+{
+  "singleQuote": true,
+  "semi": true,
+  "tabWidth": 2,
+  "trailingComma": "es5",
+  "printWidth": 100,
+  "arrowParens": "avoid"
+}
+
+// .eslintrc
+{
+  "extends": [
+    "next/core-web-vitals",
+    "prettier"
+  ],
+  "rules": {
+    "no-unused-vars": "error",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "react/no-unescaped-entities": "off",
+    "react-hooks/exhaustive-deps": "warn"
+  }
+}
+```
+
+#### Aplicación
+- Ejecutar antes de commit: `npm run lint`
+- Corrección automática: `npm run format`
+- Pre-commit hooks con Husky
+
+### 2. Convenciones de nombrado
+
+#### Archivos y carpetas
+- **Componentes React**: `PascalCase.tsx` (ej: `Button.tsx`)
+- **Utilidades/hooks**: `camelCase.ts` (ej: `useAuth.ts`)
+- **Constantes**: `UPPER_SNAKE_CASE`
+- **Carpetas de componentes**: `PascalCase/`
+- **Carpetas generales**: `kebab-case/`
+
+#### Variables y funciones
+- **Variables/funciones**: `camelCase`
+- **Componentes/clases**: `PascalCase`
+- **Constantes**: `UPPER_SNAKE_CASE`
+- **Tipos/interfaces**: `PascalCase`
+- **Privado/protegido**: Prefijo `_` (ej: `_privateMethod`)
+
+```typescript
+// Ejemplos
+const userName = 'John';
+const ITEMS_PER_PAGE = 10;
+function calculateTotal() {}
+class UserProfile {}
+interface UserData {}
+type UserRole = 'admin' | 'user';
+```
+
+### 3. Organización de importaciones
+
+```typescript
+// Orden recomendado
+// 1. Importaciones de React y librerías externas
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import classNames from 'classnames';
+
+// 2. Importaciones de tipos (separadas)
+import type { User, AuthState } from '@/types';
+
+// 3. Importaciones de componentes
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+
+// 4. Importaciones de hooks y estado
+import { useAuth } from '@/hooks/useAuth';
+
+// 5. Importaciones de utilidades y constantes
+import { formatDate } from '@/lib/utils/date';
+import { ROUTES } from '@/lib/constants';
+```
+
+---
+
+## 🧱 Patrones y anti-patrones
+
+### 1. Patrones recomendados
+
+#### Componentes
+- **Componentes funcionales** con hooks (preferidos sobre clases)
+- **Custom hooks** para lógica reutilizable
+- **Composición** sobre herencia
+- **Props con defaultProps** para valores por defecto
+- **Destructuring** de props para claridad
+
+```tsx
+// Componente bien estructurado
+import { useState } from 'react';
+import { Button } from '@/components/ui/Button';
+
+interface CardProps {
+  title: string;
+  description?: string;
+  onAction?: () => void;
+}
+
+export function Card({ title, description = '', onAction }: CardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const toggleExpanded = () => setIsExpanded(!isExpanded);
+  
+  return (
+    <div className="border rounded-lg p-4">
+      <h3 className="text-lg font-bold">{title}</h3>
+      
+      {description && (
+        <p className={isExpanded ? 'line-clamp-none' : 'line-clamp-2'}>
+          {description}
+        </p>
+      )}
+      
+      {description.length > 120 && (
+        <button 
+          className="text-sm text-blue-500"
+          onClick={toggleExpanded}
+        >
+          {isExpanded ? 'Ver menos' : 'Ver más'}
+        </button>
+      )}
+      
+      {onAction && (
+        <Button onClick={onAction} className="mt-4">
+          Acción
+        </Button>
+      )}
+    </div>
+  );
+}
+```
+
+#### Custom hooks
+- Encapsular lógica reutilizable
+- Comenzar con `use` (importante)
+- Seguir reglas de hooks
+- Documentar con JSDoc
+
+```tsx
+/**
+ * Hook para gestionar el estado de un contador con límites
+ * @param initialValue Valor inicial del contador
+ * @param min Valor mínimo permitido
+ * @param max Valor máximo permitido
+ */
+function useCounter(initialValue = 0, min = 0, max = 100) {
+  const [count, setCount] = useState(initialValue);
+  
+  const increment = () => {
+    setCount(prev => Math.min(prev + 1, max));
+  };
+  
+  const decrement = () => {
+    setCount(prev => Math.max(prev - 1, min));
+  };
+  
+  const reset = () => {
+    setCount(initialValue);
+  };
+  
+  return { count, increment, decrement, reset };
+}
+```
+
+### 2. Anti-patrones a evitar
+
+- **Componentes gigantes**: Dividir en subcomponentes
+- **Prop drilling**: Usar Context o estado global para datos profundos
+- **Mutación directa de estado**: Usar funciones setState
+- **Any**: Evitar el tipo `any` en TypeScript
+- **Código duplicado**: Abstraer en funciones/componentes reutilizables
+- **Efectos innecesarios**: Solo usar useEffect cuando sea necesario
+- **Mezclado de responsabilidades**: Cada componente con un propósito único
+
+```tsx
+// ❌ MAL: Componente gigante con múltiples responsabilidades
+function UserDashboard() {
+  const [user, setUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [activeTab, setActiveTab] = useState('posts');
+  
+  // 100+ líneas de lógica...
+  
+  return (
+    // 200+ líneas de JSX...
+  );
+}
+
+// ✅ BIEN: Componentes pequeños y enfocados
+function UserDashboard() {
+  const [activeTab, setActiveTab] = useState('posts');
+  
+  return (
+    <div>
+      <UserHeader />
+      <TabNavigation 
+        activeTab={activeTab} 
+        onChangeTab={setActiveTab} 
+      />
+      {activeTab === 'posts' && <UserPosts />}
+      {activeTab === 'comments' && <UserComments />}
+    </div>
+  );
+}
+```
+
+---
+
+## 📝 Documentación de código
+
+### 1. JSDoc para funciones y componentes
+
+```typescript
+/**
+ * Formatea una fecha en formato localizado
+ * @param date - Fecha a formatear (objeto Date o string ISO)
+ * @param locale - Código de localización (por defecto: 'es-ES')
+ * @param options - Opciones de formato adicionales
+ * @returns Fecha formateada como string
+ */
+function formatDate(
+  date: Date | string,
+  locale = 'es-ES',
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  const dateObject = typeof date === 'string' ? new Date(date) : date;
+  
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    ...options,
+  }).format(dateObject);
+}
+```
+
+### 2. PropTypes o TypeScript interfaces para componentes
+
+```typescript
+interface ButtonProps {
+  /** Texto o contenido a mostrar dentro del botón */
+  children: React.ReactNode;
+  /** Función a ejecutar al hacer clic */
+  onClick?: () => void;
+  /** Variante visual del botón */
+  variant?: 'primary' | 'secondary' | 'outline';
+  /** Si el botón ocupa todo el ancho disponible */
+  fullWidth?: boolean;
+  /** Estado de carga del botón */
+  isLoading?: boolean;
+  /** Estado deshabilitado */
+  disabled?: boolean;
+}
+```
+
+### 3. README para cada módulo principal
+
+Mantener un README.md conciso en carpetas principales explicando:
+- Propósito del módulo
+- Cómo usar los componentes/funciones principales
+- Ejemplos de código
+- Explicación de decisiones arquitectónicas
+
+---
+
+## 🧪 Testing
+
+### 1. Componentes
+
+Cada componente debe tener tests que cubran:
+- Renderizado básico
+- Interacciones principales
+- Estados de error/carga
+- Props opcionales
+
+```typescript
+// Button.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button component', () => {
+  it('renders correctly', () => {
+    render(<Button>Click me</Button>);
+    expect(screen.getByRole('button')).toHaveTextContent('Click me');
+  });
+  
+  it('calls onClick when clicked', () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick}>Click me</Button>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+  
+  it('disables button when disabled prop is true', () => {
+    render(<Button disabled>Click me</Button>);
+    expect(screen.getByRole('button')).toBeDisabled();
+  });
+  
+  it('shows loading state', () => {
+    render(<Button isLoading>Click me</Button>);
+    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
+  });
+});
+```
+
+### 2. Hooks/utilidades
+
+```typescript
+// useCounter.test.ts
+import { renderHook, act } from '@testing-library/react-hooks';
+import { useCounter } from './useCounter';
+
+describe('useCounter hook', () => {
+  it('initializes with default value', () => {
+    const { result } = renderHook(() => useCounter());
+    expect(result.current.count).toBe(0);
+  });
+  
+  it('increments counter', () => {
+    const { result } = renderHook(() => useCounter(5));
+    act(() => {
+      result.current.increment();
+    });
+    expect(result.current.count).toBe(6);
+  });
+  
+  it('does not exceed maximum value', () => {
+    const { result } = renderHook(() => useCounter(9, 0, 10));
+    act(() => {
+      result.current.increment();
+      result.current.increment();
+    });
+    expect(result.current.count).toBe(10);
+  });
+});
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Code Standards)
+
+- Seguir convenciones de nombrado para todos los archivos y variables
+- Usar Prettier y ESLint según configuración estándar
+- Escribir tests para todos los componentes y funciones críticas
+- Documentar con JSDoc todas las funciones públicas y componentes
+- Limitar componentes a 300 líneas máximo (dividir si es más grande)
+- Seguir patrones de composición y hooks personalizados
+- Evitar tipado `any` en TypeScript
+- Mantener estructura organizada de importaciones
+- Mantener los ficheros de código en inglés para mejor compatibilidad
+- No mezclar lógica de negocio con UI en los mismos componentes

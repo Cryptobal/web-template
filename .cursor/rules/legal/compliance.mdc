@@ -1,0 +1,615 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: compliance.mdc
+
+## 🎯 Propósito
+Establecer directrices claras para el cumplimiento de normativas legales en el desarrollo de sitios web, integrando desde el diseño aspectos de privacidad, protección de datos, cookies y accesibilidad. Permite cumplir con legislaciones como GDPR (UE), LGPD (Brasil), CCPA (California) y otras regulaciones globales.
+
+---
+
+## 🔒 Gestión de datos y privacidad
+
+### 1. Políticas de privacidad
+
+#### Requisitos mínimos
+- URL canónica: `/politica-de-privacidad` (ES) `/privacy-policy` (EN)
+- Contenido actualizado conforme a las leyes aplicables
+- Lenguaje claro y accesible (no usar jerga legal excesiva)
+- Inclusión obligatoria de:
+  - Datos recopilados y finalidad
+  - Base legal para el procesamiento
+  - Período de retención
+  - Derechos de los usuarios
+  - Transferencias internacionales
+  - Contacto DPO (Data Protection Officer)
+
+#### Implementación técnica
+```tsx
+// pages/politica-de-privacidad.tsx o app/[locale]/politica-de-privacidad/page.tsx
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Política de Privacidad | Tu Empresa',
+  description: 'Conoce cómo recopilamos y protegemos tus datos personales',
+  alternates: {
+    canonical: '/politica-de-privacidad',
+    languages: {
+      'en': '/privacy-policy',
+    },
+  },
+};
+
+export default function PrivacyPolicyPage() {
+  return (
+    <div className="container mx-auto py-8 px-4">
+      <h1 className="text-3xl font-bold mb-6">Política de Privacidad</h1>
+      <p className="text-sm text-gray-500 mb-6">Última actualización: {new Date().toLocaleDateString()}</p>
+      
+      {/* Contenido de la política de privacidad */}
+    </div>
+  );
+}
+```
+
+### 2. Consentimiento para recopilación de datos
+
+- Consentimiento activo (no pre-marcado)
+- Separación entre consentimiento esencial y opcional
+- Registro auditable del consentimiento (timestamp, versión, IP)
+- Mecanismo para retirar el consentimiento
+
+```typescript
+// types/consent.ts
+export type ConsentType = 'marketing' | 'analytics' | 'personalization';
+export type ConsentStatus = 'granted' | 'denied' | 'pending';
+
+export interface ConsentRecord {
+  id: string;
+  userId?: string;
+  anonymousId: string;
+  consents: Record<ConsentType, ConsentStatus>;
+  timestamp: number;
+  version: string;
+  ipHash: string; // Almacenar solo hash por privacidad
+}
+
+// lib/consent-manager.ts
+export async function recordConsent(
+  consents: Record<ConsentType, ConsentStatus>,
+  userId?: string
+): Promise<ConsentRecord> {
+  // Generar registro de consentimiento
+  const consentRecord: ConsentRecord = {
+    id: uuidv4(),
+    userId,
+    anonymousId: getOrCreateAnonymousId(),
+    consents,
+    timestamp: Date.now(),
+    version: '1.0', // Versión de política de privacidad
+    ipHash: await hashIpAddress(getClientIp()),
+  };
+  
+  // Guardar en base de datos o servicio
+  await saveConsentRecord(consentRecord);
+  
+  return consentRecord;
+}
+```
+
+---
+
+## 🍪 Gestión de cookies
+
+### 1. Banner de cookies
+
+- Mostrar antes de cualquier cookie no esencial
+- Ofrecer opciones granulares por categoría
+- Permitir rechazo con la misma facilidad que aceptación
+- Funcional en mobile y accesible mediante teclado
+
+```tsx
+// components/CookieBanner.tsx (componente de UI)
+interface CookieBannerProps {
+  onAcceptAll: () => void;
+  onRejectAll: () => void;
+  onSavePreferences: (preferences: Record<string, boolean>) => void;
+}
+
+export function CookieBanner({ 
+  onAcceptAll, 
+  onRejectAll, 
+  onSavePreferences 
+}: CookieBannerProps) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [preferences, setPreferences] = useState({
+    necessary: true, // Siempre true y deshabilitado
+    functional: false,
+    analytics: false,
+    marketing: false,
+  });
+  
+  // Código del componente banner...
+}
+```
+
+### 2. Tipos de cookies y cumplimiento
+
+| Tipo | Requiere consentimiento | Ejemplo | Categoría |
+|------|------------------------|---------|-----------|
+| Estrictamente necesarias | No | Sesión, CSRF | necessary |
+| Funcionales | Sí | Preferencias, idioma | functional |
+| Analíticas | Sí | Google Analytics | analytics |
+| Marketing | Sí | Ads, retargeting | marketing |
+
+```typescript
+// lib/cookie-categories.ts
+export const COOKIE_CATEGORIES = {
+  necessary: {
+    name: 'Necesarias',
+    description: 'Cookies esenciales para el funcionamiento del sitio',
+    required: true,
+  },
+  functional: {
+    name: 'Funcionales',
+    description: 'Cookies para recordar tus preferencias',
+    required: false,
+  },
+  analytics: {
+    name: 'Analíticas',
+    description: 'Cookies que nos ayudan a entender cómo usas el sitio',
+    required: false,
+  },
+  marketing: {
+    name: 'Marketing',
+    description: 'Cookies usadas para mostrarte anuncios relevantes',
+    required: false,
+  },
+};
+```
+
+---
+
+## ♿ Accesibilidad y cumplimiento normativo
+
+### 1. Conformidad WCAG 2.1 AA
+
+- Requerido para cumplir con normativas europeas
+- Documentar estado de conformidad en `/accesibilidad` o `/accessibility`
+- Implementar mejoras progresivas para nivel AA
+
+```typescript
+// Declaración de conformidad - app/accesibilidad/page.tsx
+export default function AccessibilityPage() {
+  return (
+    <div className="container mx-auto py-8">
+      <h1>Declaración de Accesibilidad</h1>
+      <p>
+        Este sitio web se esfuerza por cumplir con el nivel AA de las Pautas de 
+        Accesibilidad para el Contenido Web (WCAG) 2.1.
+      </p>
+      
+      <h2>Estado de conformidad</h2>
+      <p>
+        A fecha de [FECHA], este sitio cumple parcialmente con el nivel AA de WCAG 2.1.
+      </p>
+      
+      {/* Resto de la declaración */}
+    </div>
+  );
+}
+```
+
+### 2. Componentes accesibles y conformidad
+
+```typescript
+// components/ui/AccessibleModal.tsx
+import { useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { FocusTrap } from '@/lib/accessibility/focus-trap';
+
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  initialFocusRef?: React.RefObject<HTMLElement>;
+}
+
+export function AccessibleModal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  initialFocusRef,
+}: ModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  
+  // Cerrar con Escape
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    }
+    
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      // Prevenir scroll del body
+      document.body.style.overflow = 'hidden';
+    }
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
+  
+  // Enfoque inicial
+  useEffect(() => {
+    if (isOpen) {
+      if (initialFocusRef?.current) {
+        initialFocusRef.current.focus();
+      } else if (modalRef.current) {
+        // Buscar el primer elemento enfocable
+        const focusable = modalRef.current.querySelector(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        ) as HTMLElement;
+        
+        if (focusable) {
+          focusable.focus();
+        }
+      }
+    }
+  }, [isOpen, initialFocusRef]);
+  
+  if (!isOpen) return null;
+  
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <FocusTrap>
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+          className="bg-white rounded-lg p-6 max-w-md w-full"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 id="modal-title" className="text-xl font-semibold">
+              {title}
+            </h2>
+            <button
+              className="text-gray-500 hover:text-gray-700"
+              onClick={onClose}
+              aria-label="Cerrar modal"
+            >
+              &times;
+            </button>
+          </div>
+          
+          <div className="modal-content">{children}</div>
+          
+          <div className="mt-6 flex justify-end">
+            <button
+              className="px-4 py-2 bg-gray-200 rounded mr-2"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </FocusTrap>
+    </div>,
+    document.body
+  );
+}
+```
+
+---
+
+## 📝 Términos y Condiciones
+
+### 1. Requisitos mínimos
+
+- URL canónica: `/terminos-y-condiciones` (ES) o `/terms-of-service` (EN)
+- Lenguaje claro y secciones bien estructuradas
+- Versión y fecha de última actualización
+- Incluir como mínimo:
+  - Descripción del servicio
+  - Limitaciones de uso y responsabilidad
+  - Política de propiedad intelectual
+  - Terminación de servicio
+  - Ley aplicable y jurisdicción
+
+```typescript
+// app/terminos-y-condiciones/page.tsx
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Términos y Condiciones | Tu Empresa',
+  description: 'Términos legales que rigen el uso de nuestros servicios',
+  alternates: {
+    canonical: '/terminos-y-condiciones',
+    languages: {
+      'en': '/terms-of-service',
+    },
+  },
+};
+
+export default function TermsPage() {
+  return (
+    <div className="container mx-auto py-8 px-4">
+      <h1 className="text-3xl font-bold mb-6">Términos y Condiciones</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Última actualización: {new Date().toLocaleDateString()}
+      </p>
+      
+      <section className="mb-8">
+        <h2 className="text-xl font-semibold mb-4">1. Introducción</h2>
+        <p>
+          Estos Términos y Condiciones rigen el uso de nuestro sitio web. Al acceder 
+          o utilizar el servicio, usted acepta estar sujeto a estos términos.
+        </p>
+      </section>
+      
+      {/* Resto de secciones del documento */}
+    </div>
+  );
+}
+```
+
+### 2. Registro de aceptación
+
+```typescript
+// lib/terms/acceptance.ts
+interface TermsAcceptance {
+  userId: string;
+  termsVersion: string;
+  acceptedAt: Date;
+  ipAddress: string;
+  userAgent: string;
+}
+
+export async function recordTermsAcceptance(
+  userId: string,
+  ipAddress: string,
+  userAgent: string
+): Promise<TermsAcceptance> {
+  const currentTermsVersion = '1.0'; // Obtener de configuración
+  
+  const acceptance: TermsAcceptance = {
+    userId,
+    termsVersion: currentTermsVersion,
+    acceptedAt: new Date(),
+    ipAddress,
+    userAgent,
+  };
+  
+  // Guardar en base de datos
+  // await prisma.termsAcceptance.create({ data: acceptance });
+  
+  return acceptance;
+}
+
+// Verificar si el usuario ha aceptado la versión actual
+export async function hasAcceptedCurrentTerms(userId: string): Promise<boolean> {
+  const currentTermsVersion = '1.0'; // Obtener de configuración
+  
+  // Consultar base de datos
+  // const acceptance = await prisma.termsAcceptance.findFirst({
+  //   where: {
+  //     userId,
+  //     termsVersion: currentTermsVersion,
+  //   },
+  //   orderBy: {
+  //     acceptedAt: 'desc',
+  //   },
+  // });
+  
+  // return !!acceptance;
+  
+  // Implementación simulada
+  return true;
+}
+```
+
+---
+
+## 🌍 Cumplimiento de leyes regionales
+
+### 1. Detección de región y consentimiento adaptativo
+
+```typescript
+// lib/geo/region-detector.ts
+export enum Region {
+  EU = 'eu',        // Unión Europea (GDPR)
+  US_CALIFORNIA = 'us_california', // California (CCPA)
+  US_OTHER = 'us_other',    // Otros estados de EE. UU.
+  BRAZIL = 'brazil',    // Brasil (LGPD)
+  UK = 'uk',        // Reino Unido
+  CANADA = 'canada',    // Canadá (PIPEDA)
+  OTHER = 'other',     // Resto del mundo
+}
+
+// Detector de región basado en IP
+export async function detectUserRegion(
+  ipAddress?: string
+): Promise<Region> {
+  if (!ipAddress) {
+    return Region.OTHER; // Por defecto, aplicar el nivel más estricto
+  }
+  
+  try {
+    // Integración con servicio de geolocalización
+    // const response = await fetch(`https://geo.api.com/geoip/${ipAddress}`);
+    // const data = await response.json();
+    
+    // Lógica de mapeo de país/región a enum Region
+    // if (data.isEU) return Region.EU;
+    // if (data.country === 'US' && data.region === 'California') return Region.US_CALIFORNIA;
+    // etc.
+    
+    // Implementación simulada
+    return Region.EU; // Ejemplo: Asumir UE para pruebas
+  } catch (error) {
+    console.error('Error detecting region:', error);
+    return Region.OTHER; // En caso de error, usar el más restrictivo
+  }
+}
+
+// Reglas de consentimiento por región
+export const regionConsentRules = {
+  [Region.EU]: {
+    requiresExplicitConsent: true,
+    requiresOptIn: true,
+    optOutMechanism: true,
+    cookieLifespan: 6, // meses
+    requiresDeletion: true,
+    ageVerification: 16,
+  },
+  [Region.US_CALIFORNIA]: {
+    requiresExplicitConsent: true,
+    requiresOptIn: false,
+    optOutMechanism: true,
+    cookieLifespan: 12, // meses
+    requiresDeletion: true,
+    ageVerification: 13,
+  },
+  [Region.BRAZIL]: {
+    requiresExplicitConsent: true,
+    requiresOptIn: true,
+    optOutMechanism: true,
+    cookieLifespan: 6, // meses
+    requiresDeletion: true,
+    ageVerification: 13,
+  },
+  // Configuraciones para otras regiones...
+};
+```
+
+### 2. Componente adaptativo de banner de cookies
+
+```tsx
+// components/RegionalCookieBanner.tsx
+import { useState, useEffect } from 'react';
+import { Region, detectUserRegion, regionConsentRules } from '@/lib/geo/region-detector';
+
+interface RegionalCookieBannerProps {
+  onAccept: (preferences: Record<string, boolean>) => void;
+  onReject: () => void;
+}
+
+export function RegionalCookieBanner({ onAccept, onReject }: RegionalCookieBannerProps) {
+  const [region, setRegion] = useState<Region>(Region.OTHER);
+  const [loaded, setLoaded] = useState(false);
+  const [preferences, setPreferences] = useState({
+    necessary: true,
+    functional: false,
+    analytics: false,
+    marketing: false,
+  });
+  
+  useEffect(() => {
+    // Detectar región al cargar
+    async function detectRegion() {
+      const userRegion = await detectUserRegion();
+      setRegion(userRegion);
+      setLoaded(true);
+    }
+    
+    detectRegion();
+  }, []);
+  
+  if (!loaded) return null;
+  
+  const rules = regionConsentRules[region];
+  
+  // Renderizado condicional según las reglas de la región
+  return (
+    <div className="cookie-banner">
+      <h2>Aviso de cookies</h2>
+      <p>
+        {rules.requiresExplicitConsent
+          ? 'Por favor, acepte expresamente el uso de cookies para continuar.'
+          : 'Utilizamos cookies para mejorar su experiencia.'}
+      </p>
+      
+      <div className="cookie-options">
+        {/* Opciones de cookies, adaptadas según la región */}
+        {Object.entries(preferences).map(([key, value]) => (
+          <label key={key}>
+            <input
+              type="checkbox"
+              checked={key === 'necessary' ? true : value}
+              disabled={key === 'necessary'}
+              onChange={(e) => {
+                if (key !== 'necessary') {
+                  setPreferences({
+                    ...preferences,
+                    [key]: e.target.checked,
+                  });
+                }
+              }}
+            />
+            {key.charAt(0).toUpperCase() + key.slice(1)}
+          </label>
+        ))}
+      </div>
+      
+      <div className="cookie-actions">
+        {/* Botones adaptados según las reglas de la región */}
+        {rules.requiresOptIn ? (
+          <>
+            <button onClick={() => onAccept(preferences)}>
+              Aceptar seleccionadas
+            </button>
+            <button onClick={onReject}>Rechazar no esenciales</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => onAccept(preferences)}>Aceptar</button>
+            {rules.optOutMechanism && (
+              <button onClick={onReject}>Rechazar</button>
+            )}
+          </>
+        )}
+      </div>
+      
+      {rules.ageVerification && (
+        <p className="age-notice">
+          Este sitio no está destinado a menores de {rules.ageVerification} años.
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Cumplimiento Legal)
+
+- Implementar un banner de cookies configurable según la región del usuario
+- Mantener registros detallados de consentimiento con timestamps y versiones
+- Proporcionar mecanismos claros para retirar el consentimiento en cualquier momento
+- Garantizar accesibilidad WCAG 2.1 AA en todos los componentes
+- Separar claramente las cookies esenciales de las opcionales
+- Documentar el estado de cumplimiento de accesibilidad
+- Mantener documentos legales actualizados con versiones y cambios
+- Implementar verificación de edad cuando sea requerido
+- Adaptar los requisitos de consentimiento según la ubicación del usuario
+- Usar hash para almacenar IPs en los registros de consentimiento
+- Crear componentes UI accesibles para todos los elementos interactivos
+- Registrar la aceptación de términos y condiciones
+- Implementar el derecho al olvido y portabilidad de datos para cumplir con GDPR
+- Revisar periódicamente el cumplimiento de normativas actualizadas

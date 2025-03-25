@@ -1,0 +1,834 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: autenticacion.mdc
+
+## 🎯 Propósito
+Establecer estándares sólidos para implementar sistemas de autenticación seguros, escalables y conformes con las mejores prácticas de la industria, asegurando la protección de las credenciales de usuario y la integridad del sistema.
+
+---
+
+## 🔐 Estrategias de autenticación recomendadas
+
+### 1. JWT con rotación de tokens
+```typescript
+// lib/auth/jwt.ts
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
+
+interface TokenPayload {
+  userId: string;
+  role: string;
+  sessionId: string;
+  jti: string; // JWT ID (único por token)
+}
+
+// Generar tokens de acceso (corta duración) y refresco (larga duración)
+export function generateTokens(userId: string, role: string) {
+  const sessionId = uuidv4();
+  
+  // Token de acceso (15 minutos)
+  const accessToken = jwt.sign(
+    { userId, role, sessionId, jti: uuidv4() } as TokenPayload,
+    process.env.JWT_SECRET_KEY!,
+    { expiresIn: '15m' }
+  );
+  
+  // Token de refresco (7 días)
+  const refreshToken = jwt.sign(
+    { userId, role, sessionId, jti: uuidv4() } as TokenPayload,
+    process.env.JWT_REFRESH_SECRET!,
+    { expiresIn: '7d' }
+  );
+  
+  return { accessToken, refreshToken, sessionId };
+}
+
+// Verificar token
+export function verifyToken(token: string, isRefreshToken = false) {
+  try {
+    const secret = isRefreshToken 
+      ? process.env.JWT_REFRESH_SECRET! 
+      : process.env.JWT_SECRET_KEY!;
+    
+    const payload = jwt.verify(token, secret) as TokenPayload;
+    return { valid: true, expired: false, payload };
+  } catch (error: any) {
+    return {
+      valid: false,
+      expired: error.name === 'TokenExpiredError',
+      payload: null,
+    };
+  }
+}
+
+// Renovar tokens usando el token de refresco
+export async function refreshTokens(refreshToken: string) {
+  const { valid, expired, payload } = verifyToken(refreshToken, true);
+  
+  if (!valid) {
+    throw new Error('Invalid refresh token');
+  }
+  
+  if (expired) {
+    throw new Error('Refresh token expired');
+  }
+  
+  // Verificar que el token no esté en lista negra
+  const isBlacklisted = await checkTokenBlacklist(payload!.jti);
+  if (isBlacklisted) {
+    throw new Error('Refresh token revoked');
+  }
+  
+  // Generar nuevos tokens
+  const { userId, role, sessionId } = payload as TokenPayload;
+  return generateTokens(userId, role);
+}
+
+// Revocar tokens (al cerrar sesión)
+export async function revokeTokens(refreshToken: string) {
+  const { payload } = verifyToken(refreshToken, true);
+  
+  if (payload) {
+    // Añadir jti a lista negra
+    await addToBlacklist(payload.jti);
+    
+    // También se puede revocar la sesión completa
+    await invalidateSession(payload.sessionId);
+  }
+}
+
+// Funciones auxiliares para gestionar tokens revocados
+async function addToBlacklist(jti: string) {
+  // Implementación con Redis o base de datos
+}
+
+async function checkTokenBlacklist(jti: string) {
+  // Implementación con Redis o base de datos
+  return false;
+}
+
+async function invalidateSession(sessionId: string) {
+  // Implementación con Redis o base de datos
+}
+```
+
+### 2. Protección con middlewares
+
+```typescript
+// middleware/auth.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyToken } from '@/lib/auth/jwt';
+
+export function middleware(request: NextRequest) {
+  // Excluir rutas públicas
+  const publicPaths = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'];
+  if (publicPaths.includes(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+  
+  // Extraer token del header
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Authentication required' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  const token = authHeader.split(' ')[1];
+  const { valid, expired, payload } = verifyToken(token);
+  
+  if (!valid) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Invalid token' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  if (expired) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Token expired' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Añadir información del usuario al contexto de la solicitud
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-id', payload!.userId);
+  requestHeaders.set('x-user-role', payload!.role);
+  
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+}
+
+export const config = {
+  matcher: '/api/:path*',
+};
+```
+
+### 3. Integración con NextAuth.js
+
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from 'next-auth';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import { PrismaClient } from '@prisma/client';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
+import GitHubProvider from 'next-auth/providers/github';
+import bcrypt from 'bcryptjs';
+
+const prisma = new PrismaClient();
+
+export const authOptions = {
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    // Proveedor de credenciales (email/password)
+    CredentialsProvider({
+      name: 'Credentials',
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+        
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        });
+        
+        if (!user || !user.password) {
+          return null;
+        }
+        
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        
+        if (!isPasswordValid) {
+          return null;
+        }
+        
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        };
+      }
+    }),
+    
+    // OAuth providers
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+          role: 'user',
+        };
+      },
+    }),
+    
+    GitHubProvider({
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      profile(profile) {
+        return {
+          id: profile.id.toString(),
+          name: profile.name || profile.login,
+          email: profile.email,
+          image: profile.avatar_url,
+          role: 'user',
+        };
+      },
+    }),
+  ],
+  
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 días
+  },
+  
+  callbacks: {
+    async jwt({ token, user }) {
+      // Añadir rol a JWT al iniciar sesión
+      if (user) {
+        token.role = user.role;
+        token.id = user.id;
+      }
+      return token;
+    },
+    
+    async session({ session, token }) {
+      // Añadir rol y ID a la sesión
+      if (session.user) {
+        session.user.role = token.role;
+        session.user.id = token.id;
+      }
+      return session;
+    },
+  },
+  
+  pages: {
+    signIn: '/auth/login',
+    signOut: '/auth/logout',
+    error: '/auth/error',
+    verifyRequest: '/auth/verify-request',
+  },
+  
+  debug: process.env.NODE_ENV === 'development',
+};
+
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
+```
+
+---
+
+## 🔍 Gestión segura de contraseñas
+
+### 1. Hash y almacenamiento
+
+```typescript
+// lib/auth/password.ts
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
+
+// Generar hash de contraseña con salt
+export async function hashPassword(password: string): Promise<string> {
+  // Coste alto para dificultar ataques de fuerza bruta (12-14 recomendado)
+  const saltRounds = 12;
+  return bcrypt.hash(password, saltRounds);
+}
+
+// Verificar contraseña
+export async function verifyPassword(
+  password: string,
+  hashedPassword: string
+): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword);
+}
+
+// Generar token de restablecimiento de contraseña
+export function generateResetToken(): string {
+  // Token aleatorio de 32 bytes convertido a hexadecimal (64 caracteres)
+  return randomBytes(32).toString('hex');
+}
+
+// Validar fortaleza de contraseña
+export function validatePasswordStrength(password: string): {
+  valid: boolean;
+  message?: string;
+} {
+  // Mínimo 8 caracteres
+  if (password.length < 8) {
+    return { 
+      valid: false, 
+      message: 'La contraseña debe tener al menos 8 caracteres' 
+    };
+  }
+  
+  // Comprobar que tenga al menos una letra mayúscula
+  if (!/[A-Z]/.test(password)) {
+    return {
+      valid: false,
+      message: 'La contraseña debe incluir al menos una letra mayúscula'
+    };
+  }
+  
+  // Comprobar que tenga al menos una letra minúscula
+  if (!/[a-z]/.test(password)) {
+    return {
+      valid: false,
+      message: 'La contraseña debe incluir al menos una letra minúscula'
+    };
+  }
+  
+  // Comprobar que tenga al menos un número
+  if (!/[0-9]/.test(password)) {
+    return {
+      valid: false,
+      message: 'La contraseña debe incluir al menos un número'
+    };
+  }
+  
+  // Comprobar que tenga al menos un carácter especial
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return {
+      valid: false,
+      message: 'La contraseña debe incluir al menos un carácter especial'
+    };
+  }
+  
+  return { valid: true };
+}
+```
+
+### 2. Implementación de restablecimiento de contraseña
+
+```typescript
+// app/api/auth/reset-password/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+import { hashPassword, generateResetToken } from '@/lib/auth/password';
+import { sendEmail } from '@/lib/email/sendEmail';
+
+const prisma = new PrismaClient();
+
+// Solicitar restablecimiento de contraseña
+export async function POST(request: NextRequest) {
+  try {
+    const { email } = await request.json();
+    
+    if (!email) {
+      return NextResponse.json(
+        { error: 'El email es requerido' },
+        { status: 400 }
+      );
+    }
+    
+    // Buscar usuario
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+    
+    if (!user) {
+      // Retornar 200 aunque el usuario no exista por seguridad
+      return NextResponse.json(
+        { message: 'Si el email existe, recibirá instrucciones para restablecer su contraseña' },
+        { status: 200 }
+      );
+    }
+    
+    // Generar token de restablecimiento
+    const resetToken = generateResetToken();
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hora
+    
+    // Guardar token en la base de datos
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetToken,
+        resetTokenExpiry,
+      },
+    });
+    
+    // Enviar email
+    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password?token=${resetToken}`;
+    
+    await sendEmail({
+      to: user.email,
+      subject: 'Restablecimiento de contraseña',
+      text: `Haga clic en el siguiente enlace para restablecer su contraseña: ${resetUrl}`,
+      html: `
+        <p>Haga clic en el siguiente enlace para restablecer su contraseña:</p>
+        <p><a href="${resetUrl}">Restablecer contraseña</a></p>
+        <p>Este enlace expirará en 1 hora.</p>
+      `,
+    });
+    
+    return NextResponse.json(
+      { message: 'Si el email existe, recibirá instrucciones para restablecer su contraseña' },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Error en reset password:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+// Confirmar restablecimiento de contraseña
+export async function PUT(request: NextRequest) {
+  try {
+    const { token, password } = await request.json();
+    
+    if (!token || !password) {
+      return NextResponse.json(
+        { error: 'Token y nueva contraseña son requeridos' },
+        { status: 400 }
+      );
+    }
+    
+    // Buscar usuario con el token de restablecimiento
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiry: {
+          gt: new Date(), // Token no expirado
+        },
+      },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Token inválido o expirado' },
+        { status: 400 }
+      );
+    }
+    
+    // Hash de la nueva contraseña
+    const hashedPassword = await hashPassword(password);
+    
+    // Actualizar usuario
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+      },
+    });
+    
+    return NextResponse.json(
+      { message: 'Contraseña restablecida correctamente' },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Error en confirm reset password:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+---
+
+## 🔒 Protección contra vulnerabilidades comunes
+
+### 1. Prevención de CSRF
+
+```typescript
+// middleware/csrf.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { generateCsrfToken, validateCsrfToken } from '@/lib/security/csrf';
+
+export function middleware(request: NextRequest) {
+  // Solo aplicar a peticiones POST, PUT, DELETE, PATCH
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+    return NextResponse.next();
+  }
+  
+  // Verificar si es una ruta de API
+  if (!request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+  
+  // Excepciones (ej. webhooks externos)
+  const csrfExemptRoutes = ['/api/webhooks/stripe', '/api/webhooks/github'];
+  if (csrfExemptRoutes.some(route => request.nextUrl.pathname.startsWith(route))) {
+    return NextResponse.next();
+  }
+  
+  // Verificar token CSRF
+  const csrfToken = request.headers.get('x-csrf-token');
+  if (!csrfToken) {
+    return new NextResponse(
+      JSON.stringify({ error: 'CSRF token missing' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Validar token (de cookie o sesión)
+  const csrfCookie = request.cookies.get('csrf_token')?.value;
+  if (!csrfCookie || !validateCsrfToken(csrfToken, csrfCookie)) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Invalid CSRF token' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: '/api/:path*',
+};
+```
+
+### 2. Protección contra XSS
+
+```typescript
+// lib/security/sanitize.ts
+import sanitizeHtml from 'sanitize-html';
+
+// Opciones de sanitización para contenido HTML (ej. comentarios, biografías)
+const defaultSanitizeOptions = {
+  allowedTags: [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'p', 'a', 'ul', 'ol',
+    'li', 'b', 'i', 'strong', 'em', 'strike', 'code', 'hr', 'br', 'div',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td', 'pre', 'img',
+  ],
+  allowedAttributes: {
+    a: ['href', 'title', 'target', 'rel'],
+    img: ['src', 'alt', 'title', 'width', 'height'],
+    '*': ['class', 'id'],
+  },
+  // Enlaces externos siempre con noopener noreferrer
+  transformTags: {
+    'a': (tagName, attribs) => {
+      if (attribs.href && attribs.href.startsWith('http')) {
+        return {
+          tagName,
+          attribs: {
+            ...attribs,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+          },
+        };
+      }
+      return { tagName, attribs };
+    },
+  },
+  // Sanitizar URLs para prevenir javascript: protocol
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+};
+
+// Función para sanitizar entradas HTML
+export function sanitizeHTML(dirtyHTML: string, options = {}): string {
+  return sanitizeHtml(dirtyHTML, {
+    ...defaultSanitizeOptions,
+    ...options,
+  });
+}
+
+// Función para sanitizar entrada de texto plano
+export function sanitizeText(text: string): string {
+  return text
+    .trim()
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
+// Función para validar y sanitizar URLs
+export function sanitizeURL(url: string): string {
+  try {
+    const parsed = new URL(url);
+    
+    // Solo permitir http y https
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Protocol not allowed');
+    }
+    
+    return parsed.toString();
+  } catch (e) {
+    // Si no es una URL válida, devolver vacío
+    return '';
+  }
+}
+```
+
+### 3. Protección contra inyecciones SQL
+
+```typescript
+// lib/db/client.ts
+import { PrismaClient } from '@prisma/client';
+import { createHash } from 'crypto';
+
+// Extender Prisma Client con funciones de seguridad
+export class SecurePrismaClient extends PrismaClient {
+  /**
+   * Hashear una contraseña antes de guardarla
+   */
+  async hashPassword(password: string): Promise<string> {
+    return createHash('sha256').update(password).digest('hex');
+  }
+  
+  /**
+   * Sanitizar parámetros de búsqueda para evitar inyecciones
+   */
+  sanitizeSearchParam(param: string): string {
+    // Escapar caracteres especiales
+    return param.replace(/[%_\\]/g, '\\$&');
+  }
+  
+  /**
+   * Buscar usuarios con parámetros sanitizados
+   */
+  async findUsersSafely(searchTerm: string) {
+    const sanitized = this.sanitizeSearchParam(searchTerm);
+    
+    // Usar parámetros explícitos en lugar de concatenación
+    return this.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: sanitized } },
+          { email: { contains: sanitized } },
+        ],
+      },
+    });
+  }
+}
+
+// Exportar instancia de cliente
+const prisma = new SecurePrismaClient();
+export default prisma;
+```
+
+---
+
+## 🧪 Reglas para pruebas de seguridad
+
+### 1. Pruebas de vulnerabilidades comunes
+
+```typescript
+// tests/security/xss.test.ts
+import { sanitizeHTML, sanitizeText } from '@/lib/security/sanitize';
+
+describe('XSS Protection', () => {
+  test('sanitizeHTML strips dangerous tags and attributes', () => {
+    const dirtyHtml = '<script>alert("XSS")</script><div onclick="evil()">Click me</div>';
+    const cleanHtml = sanitizeHTML(dirtyHtml);
+    
+    // No debería contener script o atributos onclick
+    expect(cleanHtml).not.toContain('<script>');
+    expect(cleanHtml).not.toContain('onclick');
+    expect(cleanHtml).toContain('<div>Click me</div>');
+  });
+  
+  test('sanitizeHTML adds noopener noreferrer to external links', () => {
+    const html = '<a href="https://external.com">Link</a>';
+    const sanitized = sanitizeHTML(html);
+    
+    expect(sanitized).toContain('rel="noopener noreferrer"');
+    expect(sanitized).toContain('target="_blank"');
+  });
+  
+  test('sanitizeText escapes HTML entities', () => {
+    const text = '<script>alert("hello")</script>';
+    const sanitized = sanitizeText(text);
+    
+    expect(sanitized).not.toContain('<');
+    expect(sanitized).not.toContain('>');
+    expect(sanitized).toContain('&lt;script&gt;');
+  });
+});
+
+// tests/security/csrf.test.ts
+import { generateCsrfToken, validateCsrfToken } from '@/lib/security/csrf';
+
+describe('CSRF Protection', () => {
+  test('generates valid CSRF tokens', () => {
+    const token = generateCsrfToken();
+    // El token debe ser una cadena no vacía
+    expect(token).toBeTruthy();
+    expect(typeof token).toBe('string');
+    // Debería tener al menos 32 caracteres
+    expect(token.length).toBeGreaterThanOrEqual(32);
+  });
+  
+  test('validates matching tokens correctly', () => {
+    const secret = 'test-secret';
+    const token = generateCsrfToken(secret);
+    
+    expect(validateCsrfToken(token, secret)).toBe(true);
+  });
+  
+  test('rejects mismatched tokens', () => {
+    const token = generateCsrfToken('correct-secret');
+    
+    expect(validateCsrfToken(token, 'wrong-secret')).toBe(false);
+  });
+});
+```
+
+### 2. Configuración para escaneo de dependencias
+
+```yaml
+# .github/workflows/security-scan.yml
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Ejecución semanal (domingo a medianoche)
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: npm audit --production
+      
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+      
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'My Project'
+          path: '.'
+          format: 'HTML'
+          out: 'reports'
+          args: >
+            --suppression suppression.xml
+            --failOnCVSS 7
+            --enableRetired
+      
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: reports/
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Autenticación)
+
+- Usar algoritmos de hash seguros (bcrypt, Argon2) con factor de coste adecuado
+- Implementar rotación de tokens JWT con tokens de acceso de corta duración
+- Mantener una lista negra de tokens revocados (Redis recomendado)
+- Incluir CSRF con cada solicitud de autenticación 
+- No devolver mensajes de error específicos (evitar enumeración de usuarios)
+- Implementar límites de intentos de login (rate limiting)
+- Validar siempre la fortaleza de las contraseñas (longitud, complejidad)
+- Incluir verificación en dos pasos para cuentas privilegiadas
+- Utilizar cookies HttpOnly y Secure para tokens
+- Implementar mecanismo de logout efectivo que invalide tokens
+- Auditar todos los intentos de autenticación (exitosos y fallidos)
+- Incluir expiración automática en tokens de restablecimiento
+- No almacenar contraseñas o tokens en código o archivos de configuración
+- Verificar siempre la validez del correo electrónico (regex) en registro
+- Utilizar cabeceras de seguridad (X-XSS-Protection, X-Content-Type-Options)
+- Preferir OAuth sobre gestión propia de autenticación cuando sea posible
+- Impedir el reuso de contraseñas anteriores en cambios de contraseña
+- Implementar notificaciones de eventos sospechosos (múltiples fallos, cambios)
+- Utilizar frameworks de autenticación probados sobre implementaciones propias
+- Añadir delay constante en respuestas a intentos de login (evitar timing attacks) 

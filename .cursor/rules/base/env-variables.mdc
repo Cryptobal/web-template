@@ -1,0 +1,230 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: env-variables.mdc
+
+## 🎯 Propósito
+Establecer un sistema robusto para manejar variables de entorno en diferentes contextos de desarrollo, permitiendo configuración flexible sin comprometer la seguridad, evitando la exposición de secretos y facilitando el despliegue en múltiples entornos.
+
+---
+
+## 🔐 Estructura y nomenclatura
+
+### 1. Convenciones de nomenclatura
+
+- Usar MAYÚSCULAS_Y_GUIONES_BAJOS
+- Nombres descriptivos y agrupados por dominio
+- Prefijos para categorías (`DB_`, `API_`, `AUTH_`, etc.)
+
+```typescript
+// Ejemplos de buena nomenclatura
+AUTH_JWT_SECRET=your_jwt_secret_key_here
+DB_CONNECTION_STRING=postgresql://user:password@localhost:5432/mydb
+API_STRIPE_PUBLIC_KEY=pk_test_123456
+API_STRIPE_SECRET_KEY=sk_test_123456
+NEXT_PUBLIC_API_URL=https://api.example.com
+```
+
+### 2. Estructura jerárquica de archivos
+
+```bash
+# Estructura recomendada
+.env                  # Variables base (valores por defecto, no secretos)
+.env.local            # Variables locales (override local, ignorado por git)
+.env.development      # Variables específicas para desarrollo
+.env.test             # Variables específicas para tests
+.env.production       # Variables específicas para producción
+.env.*.local          # Overrides locales por entorno (ignorados por git)
+```
+
+---
+
+## 📋 Tipado y validación
+
+### 1. Esquema de validación con Zod
+
+```typescript
+// lib/env/schema.ts
+import { z } from 'zod';
+
+// Definir esquema para variables requeridas
+export const envSchema = z.object({
+  // Variables de base de datos
+  DB_HOST: z.string().min(1),
+  DB_PORT: z.string().transform(Number),
+  DB_NAME: z.string().min(1),
+  DB_USER: z.string().min(1),
+  DB_PASSWORD: z.string().min(1),
+  
+  // Variables de autenticación
+  AUTH_JWT_SECRET: z.string().min(32),
+  AUTH_JWT_EXPIRES_IN: z.string().default('15m'),
+  AUTH_REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
+  
+  // APIs externas
+  API_STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
+  
+  // Públicas (expuestas al cliente)
+  NEXT_PUBLIC_API_URL: z.string().url(),
+  NEXT_PUBLIC_STRIPE_PUBLIC_KEY: z.string().startsWith('pk_'),
+  
+  // Opcionales con valores por defecto
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.string().transform(Number).default('3000'),
+});
+
+// Inferir tipo a partir del esquema
+export type Env = z.infer<typeof envSchema>;
+```
+
+### 2. Validación y exportación tipada
+
+```typescript
+// lib/env/index.ts
+import { envSchema, Env } from './schema';
+
+// Función para validar todas las variables de entorno
+function validateEnv(): Env {
+  // En desarrollo, mostrar advertencias para variables faltantes
+  const isDev = process.env.NODE_ENV !== 'production';
+  
+  try {
+    return envSchema.parse(process.env);
+  } catch (error) {
+    console.error('❌ Variables de entorno inválidas:');
+    
+    if (error instanceof z.ZodError) {
+      error.errors.forEach(err => {
+        console.error(`  - ${err.path}: ${err.message}`);
+      });
+    } else {
+      console.error(error);
+    }
+    
+    // En producción, terminar el proceso
+    if (!isDev) {
+      console.error('Terminando proceso debido a configuración inválida.');
+      process.exit(1);
+    }
+    
+    // En desarrollo, proporcionar valores por defecto para continuar
+    return envSchema.parse({
+      ...process.env,
+      // Valores ficticios solo para desarrollo
+      ...(isDev ? {
+        DB_HOST: process.env.DB_HOST || 'localhost',
+        DB_PORT: process.env.DB_PORT || '5432',
+        DB_NAME: process.env.DB_NAME || 'dev_db',
+        DB_USER: process.env.DB_USER || 'dev_user',
+        DB_PASSWORD: process.env.DB_PASSWORD || 'dev_password',
+        AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET || 'dev_jwt_secret_at_least_32_characters_long',
+      } : {}),
+    });
+  }
+}
+
+// Exportar variables validadas
+export const env = validateEnv();
+
+// Uso: import { env } from '@/lib/env';
+// env.DB_HOST, env.AUTH_JWT_SECRET, etc.
+```
+
+---
+
+## 🔄 Entornos y CI/CD
+
+### 1. Configuración para diferentes plataformas
+
+```typescript
+// lib/env/config.ts
+import { env } from './index';
+
+// Configuración de la base de datos según entorno
+export const dbConfig = {
+  host: env.DB_HOST,
+  port: env.DB_PORT,
+  username: env.DB_USER,
+  password: env.DB_PASSWORD,
+  database: env.DB_NAME,
+  ssl: env.NODE_ENV === 'production',
+  logging: env.LOG_LEVEL === 'debug',
+};
+
+// Configuración de JWT según entorno
+export const jwtConfig = {
+  secret: env.AUTH_JWT_SECRET,
+  expiresIn: env.AUTH_JWT_EXPIRES_IN,
+  refreshTokenExpiresIn: env.AUTH_REFRESH_TOKEN_EXPIRES_IN,
+};
+
+// Otras configuraciones basadas en variables de entorno...
+```
+
+### 2. Uso seguro en GitHub Actions
+
+```yaml
+# .github/workflows/main.yml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    env:
+      NODE_ENV: test
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Create env file
+        run: |
+          echo "DB_HOST=${{ secrets.DB_HOST }}" >> .env.test
+          echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env.test
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env.test
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env.test
+          echo "DB_NAME=${{ secrets.TEST_DB_NAME }}" >> .env.test
+          echo "AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET }}" >> .env.test
+          echo "LOG_LEVEL=error" >> .env.test
+      
+      - name: Run tests
+        run: npm test
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Variables de Entorno)
+
+- Nunca incluir secretos en control de versiones (.env.local en .gitignore)
+- Usar NEXT_PUBLIC_ solo para variables accesibles desde el cliente
+- Validar todas las variables de entorno al inicio de la aplicación
+- Proporcionar valores por defecto para variables no críticas
+- Documentar todas las variables en un README o .env.example
+- Separar variables por entorno (dev/test/prod)
+- Utilizar esquemas de tipado para garantizar tipado fuerte
+- Centralizar la configuración en un único punto de acceso
+- Nunca exponer variables de entorno sensibles en el cliente
+- Implementar rotación periódica de secretos
+- Usar nombres descriptivos y consistentes
+- Mantener la mínima cantidad de variables de entorno posible
+- Siempre validar el formato y contenido de las variables críticas
+- En aplicaciones desplegadas, inyectar variables por el proveedor
+- Considerar el uso de gestores de secretos en producción

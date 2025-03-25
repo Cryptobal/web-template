@@ -1,0 +1,196 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla: browser-support.mdc
+
+## 🎯 Propósito
+Establecer directrices claras para garantizar la compatibilidad cross-browser de aplicaciones web, definiendo los navegadores y versiones soportados, junto con estrategias para manejar diferencias de implementación y fallbacks adecuados.
+
+---
+
+## 🌐 Navegadores soportados
+
+### 1. Matriz de compatibilidad
+
+| Navegador | Versiones | Motor | Prioridad |
+|-----------|-----------|-------|-----------|
+| Chrome | Últimas 2 versiones | Blink | Alta |
+| Firefox | Últimas 2 versiones | Gecko | Alta |
+| Safari | Últimas 2 versiones | WebKit | Alta |
+| Edge | Últimas 2 versiones | Blink | Alta |
+| Opera | Última versión | Blink | Media |
+| Samsung Internet | Última versión | Blink | Media |
+| IE 11 | EOL* | Trident | Baja/No soportado |
+
+*EOL: End of Life (Microsoft terminó el soporte en junio 2022)
+
+### 2. Configuración de Browserslist
+
+```json
+// package.json
+{
+  "browserslist": [
+    ">0.3%",
+    "last 2 versions",
+    "not dead",
+    "not IE 11",
+    "not op_mini all"
+  ]
+}
+```
+
+---
+
+## 🛠️ Herramientas y buenas prácticas
+
+### 1. Transpilación y Polyfills automáticos
+
+```javascript
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  transpilePackages: ["external-package-to-transpile"],
+  // Configuración explícita de navegadores (opcional, alternativa a browserslist)
+  experimental: {
+    browsersListForSwc: true,
+    legacyBrowsers: false,
+  }
+};
+
+module.exports = nextConfig;
+```
+
+### 2. Feature detection vs User Agent detection
+
+```typescript
+// utils/browser.ts
+// Feature detection (recomendado)
+export function supportsWebP(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  const canvas = document.createElement('canvas');
+  if (canvas.getContext && canvas.getContext('2d')) {
+    // El test crea una imagen WebP y verifica si el tamaño es correcto
+    return canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+  }
+  return false;
+}
+
+export function supportsIntersectionObserver(): boolean {
+  return typeof window !== 'undefined' && 
+    'IntersectionObserver' in window &&
+    'IntersectionObserverEntry' in window;
+}
+
+// User-Agent detection (evitar cuando sea posible)
+export function isSafari(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  const ua = window.navigator.userAgent;
+  return /^((?!chrome|android).)*safari/i.test(ua);
+}
+```
+
+### 3. CSS con vendor prefixes y fallbacks
+
+```scss
+// styles/mixins.scss
+@mixin flex-container {
+  display: -webkit-box;  // Antiguo Safari
+  display: -ms-flexbox;  // IE 10
+  display: flex;         // Navegadores modernos
+}
+
+@mixin transition($args...) {
+  -webkit-transition: $args;
+  -moz-transition: $args;
+  -ms-transition: $args;
+  -o-transition: $args;
+  transition: $args;
+}
+
+// Ejemplo de uso en componente
+.card {
+  @include flex-container;
+  @include transition(all 0.3s ease);
+  
+  // Fallback para navegadores que no soportan grid
+  float: left;
+  width: 33.33%;
+  
+  // Implementación moderna
+  @supports (display: grid) {
+    float: none;
+    width: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+```
+
+---
+
+## 📱 Responsive Design
+
+### 1. Mobile-first approach
+
+```scss
+// styles/breakpoints.scss
+$breakpoints: (
+  xs: 0,
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px,
+  xxl: 1400px
+);
+
+@mixin respond-above($breakpoint) {
+  @if map-has-key($breakpoints, $breakpoint) {
+    $breakpoint-value: map-get($breakpoints, $breakpoint);
+    @media (min-width: $breakpoint-value) {
+      @content;
+    }
+  } @else {
+    @media (min-width: $breakpoint) {
+      @content;
+    }
+  }
+}
+
+// Ejemplo de uso mobile-first
+.container {
+  padding: 1rem;
+  
+  @include respond-above(md) {
+    padding: 2rem;
+  }
+  
+  @include respond-above(lg) {
+    padding: 3rem;
+  }
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Browser Support)
+
+- Utilizar siempre feature detection sobre user-agent sniffing
+- Comprobar la compatibilidad de las APIs modernas en MDN antes de usarlas
+- Configurar la matriz de navegadores soportados al inicio del proyecto
+- Mantener actualizada la configuración de browserslist
+- Implementar enfoque mobile-first para diseño responsive
+- Usar herramientas de autoprefixer para gestionar prefijos de vendor
+- Evitar dependencias de bibliotecas que no sean compatibles con los navegadores objetivo
+- Siempre proporcionar fallbacks para características experimentales o con soporte parcial
+- Considerar las diferencias de rendimiento entre navegadores
+- Testear en navegadores reales, no solo en emuladores
+- Manejar con cuidado las APIs disponibles solo en navegadores específicos
+- Implementar polyfills para características esenciales en navegadores más antiguos
+- Documentar problemas conocidos de compatibilidad
+- Utilizar herramientas de análisis para conocer los navegadores de los usuarios
+- Implementar detección de navegadores no soportados y mostrar mensaje adecuado

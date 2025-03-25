@@ -1,0 +1,580 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: sitemap-robots.mdc
+
+## 🎯 Propósito
+Establecer un sistema automatizado para la generación de sitemap.xml y configuración de robots.txt, garantizando la correcta indexación por buscadores, control de acceso a contenidos y mejora del SEO técnico.
+
+---
+
+## 📄 Estructura de Sitemap XML
+
+### 1. Configuración base (next-sitemap.config.js)
+```javascript
+/** @type {import('next-sitemap').IConfig} */
+module.exports = {
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://tusitio.com',
+  generateRobotsTxt: true,
+  sitemapSize: 7000,
+  changefreq: 'daily',
+  priority: 0.7,
+  exclude: [
+    '/admin*',
+    '/dashboard*',
+    '/api*',
+    '/404',
+    '/500',
+    '/login',
+    '/register',
+    '/user*',
+  ],
+  robotsTxtOptions: {
+    policies: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: [
+          '/admin',
+          '/dashboard',
+          '/api',
+          '/user',
+          '/*.json$',
+          '/*_next/*',
+        ],
+      },
+      // Políticas para bots específicos
+      {
+        userAgent: 'Googlebot',
+        allow: '/',
+        disallow: ['/admin', '/api'],
+      },
+    ],
+    additionalSitemaps: [
+      // Sitemaps adicionales (ej. productos, blog, etc)
+      'https://tusitio.com/server-sitemap.xml',
+    ],
+  },
+};
+```
+
+### 2. Generación automatizada
+```json
+// package.json (scripts)
+{
+  "scripts": {
+    "postbuild": "next-sitemap"
+  }
+}
+```
+
+### 3. Dependencias requeridas
+```bash
+npm install next-sitemap --save-dev
+```
+
+---
+
+## 🤖 Generación dinámica de sitemaps
+
+### 1. Sitemap estático + dinámico (para rutas generadas en tiempo de ejecución)
+```typescript
+// pages/server-sitemap.xml/index.tsx
+import { getServerSideSitemap, ISitemapField } from 'next-sitemap';
+import { GetServerSideProps } from 'next';
+
+export const getServerSideProps: GetServerSideProps = async (ctx) => {
+  // Método para obtener URLs dinámicas (ej: productos desde una API)
+  const dynamicProducts = await fetchProductsFromAPI();
+  
+  const fields: ISitemapField[] = dynamicProducts.map((product) => ({
+    loc: `https://tusitio.com/productos/${product.slug}`,
+    lastmod: product.updatedAt,
+    changefreq: 'daily',
+    priority: 0.8,
+  }));
+
+  return getServerSideSitemap(ctx, fields);
+};
+
+// Por defecto, no renderiza nada (el contenido es XML)
+export default function Sitemap() {}
+```
+
+### 2. Rutas con demasiados elementos
+Para sitios con muchas URLs, se recomienda generar múltiples sitemaps:
+
+```typescript
+// pages/sitemaps/blog-[page].xml.tsx
+import { getServerSideSitemap } from 'next-sitemap';
+import { GetServerSideProps } from 'next';
+
+export const getServerSideProps: GetServerSideProps = async (ctx) => {
+  const { page } = ctx.params as { page: string };
+  const pageNumber = parseInt(page, 10);
+  const postsPerPage = 1000; // Max recomendado por sitemap
+  
+  // Obtener blog posts paginados
+  const posts = await getBlogPosts({
+    skip: (pageNumber - 1) * postsPerPage,
+    take: postsPerPage,
+  });
+  
+  const fields = posts.map((post) => ({
+    loc: `https://tusitio.com/blog/${post.slug}`,
+    lastmod: post.updatedAt,
+    changefreq: 'weekly',
+    priority: 0.7,
+  }));
+
+  return getServerSideSitemap(ctx, fields);
+};
+
+export default function PostsSitemap() {}
+```
+
+---
+
+## 🔍 Configuración de robots.txt
+
+### 1. Estructura base
+
+```
+# Archivo robots.txt base
+User-agent: *
+Allow: /
+
+# Secciones privadas
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /user/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+
+# Archivos y directorios del sistema
+Disallow: /*.json$
+Disallow: /*_next/*
+
+# Sitemap
+Sitemap: https://tusitio.com/sitemap.xml
+```
+
+### 2. Manejo de entornos
+
+```typescript
+// robots.txt para entornos de desarrollo/staging
+const disallowAll = `
+User-agent: *
+Disallow: /
+`;
+
+// robots.txt para producción
+const allowAll = `
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /login
+# Otras reglas...
+
+Sitemap: https://tusitio.com/sitemap.xml
+`;
+
+module.exports = {
+  robotsTxtOptions: {
+    // Contenido personalizado según ambiente
+    additionalSitemaps: [
+      'https://tusitio.com/sitemap.xml',
+    ],
+    transformRobotsTxt: async (config, robotsTxt) => {
+      // Definir el contenido según el entorno
+      if (process.env.NODE_ENV !== 'production' || 
+          process.env.NEXT_PUBLIC_APP_ENV === 'staging') {
+        return disallowAll;
+      }
+      return allowAll;
+    },
+  },
+};
+```
+
+---
+
+## 🔗 URLs canónicas para contenido duplicado
+
+### 1. Implementación en componente SEO
+
+```tsx
+// components/SEO.tsx
+import Head from 'next/head';
+import { useRouter } from 'next/router';
+
+interface SEOProps {
+  title: string;
+  description: string;
+  canonical?: string;
+  // Otros props...
+}
+
+export function SEO({ title, description, canonical, ...rest }: SEOProps) {
+  const router = useRouter();
+  
+  // Construir URL canónica
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://tusitio.com';
+  const canonicalUrl = canonical || `${siteUrl}${router.asPath}`;
+  
+  return (
+    <Head>
+      <title>{title}</title>
+      <meta name="description" content={description} />
+      <link rel="canonical" href={canonicalUrl} />
+      {/* Otros meta tags... */}
+    </Head>
+  );
+}
+```
+
+### 2. Manejo de parámetros de búsqueda y URL duplicadas
+
+```tsx
+// pages/productos/index.tsx
+import { SEO } from '@/components/SEO';
+import { useRouter } from 'next/router';
+
+export default function ProductsPage() {
+  const router = useRouter();
+  const { query, category } = router.query;
+  
+  // Determinar la URL canónica (para evitar duplicados por filtros)
+  let canonicalUrl = 'https://tusitio.com/productos';
+  
+  // Si es una categoría principal, usar su URL como canónica
+  if (category && !query) {
+    canonicalUrl = `https://tusitio.com/productos?category=${category}`;
+  }
+  
+  return (
+    <>
+      <SEO 
+        title="Productos | Tu Empresa"
+        description="Explora nuestra gama de productos"
+        canonical={canonicalUrl}
+      />
+      {/* Contenido de la página */}
+    </>
+  );
+}
+```
+
+---
+
+## 🚦 Headers HTTP para control de indexación
+
+### 1. Configuración en next.config.js
+
+```javascript
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        // Páginas no indexables
+        source: '/preview/:path*',
+        headers: [
+          {
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow',
+          },
+        ],
+      },
+      {
+        // Páginas en desarrollo/staging
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Robots-Tag',
+            value: process.env.NEXT_PUBLIC_APP_ENV === 'production'
+              ? 'index, follow'
+              : 'noindex, nofollow',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+### 2. Control por página con metadatos
+
+```tsx
+// app/admin/page.tsx
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Implementar `next-sitemap` en todos los proyectos
+- Configurar el script `postbuild` para generar el sitemap automáticamente
+- Implementar sitemaps separados para secciones con muchas páginas
+- Configurar robots.txt para bloquear áreas privadas/administrativas
+- Bloquear indexación completa en entornos de desarrollo/staging/test
+- Mantener URLs canónicas en todas las páginas, especialmente las con parámetros
+- Regenerar sitemaps al menos semanalmente en sitios con contenido dinámico
+- Incluir campo lastmod en todas las entradas del sitemap
+- Seguir la estructura jerárquica de URLs para facilitar el rastreo
+- Verificar el sitemap.xml y robots.txt tras cada despliegue 
+
+---
+
+## 🌩️ Optimización para Vercel y Cloudflare
+
+### Sitemap específico para Vercel
+
+```javascript
+// next-sitemap.config.js con optimización para Vercel
+module.exports = {
+  siteUrl: process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_SITE_URL || 'https://tusitio.com',
+  generateRobotsTxt: true,
+  sitemapSize: 7000,
+  // Detectar ambiente para estrategia de indexación
+  robotsTxtOptions: {
+    policies: [
+      // Permitir indexación solo en producción
+      process.env.VERCEL_ENV === 'production'
+        ? { userAgent: '*', allow: '/' }
+        : { userAgent: '*', disallow: '/' },
+      // Reglas específicas para producción
+      ...(process.env.VERCEL_ENV === 'production' 
+        ? [
+            {
+              userAgent: '*',
+              disallow: ['/api/', '/admin/', '/_next/'],
+            }
+          ]
+        : []),
+    ],
+  },
+  // Hook para transformar sitemap según entorno
+  transform: async (config, path) => {
+    // No incluir ciertas rutas en entornos de desarrollo/preview
+    if (process.env.VERCEL_ENV !== 'production' && 
+        (path.includes('/admin') || path.includes('/api'))) {
+      return null; // Excluir de sitemap
+    }
+    
+    return {
+      loc: path,
+      changefreq: config.changefreq,
+      priority: config.priority,
+      lastmod: new Date().toISOString(),
+    };
+  },
+};
+```
+
+### Middleware para control de indexación
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Añadir headers de control de indexación específicos por entorno
+  const isProduction = 
+    process.env.VERCEL_ENV === 'production' || 
+    process.env.NODE_ENV === 'production';
+  
+  if (!isProduction) {
+    // Prevenir indexación en entornos no-prod
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  } else {
+    // Habilitar indexación en prod con opciones de Cloudflare
+    response.headers.set('X-Robots-Tag', 'index, follow');
+  }
+  
+  return response;
+}
+
+export const config = {
+  matcher: [
+    // Aplicar a todas las rutas excepto estáticos
+    '/((?!_next/static|favicon.ico|robots.txt|sitemap.xml).*)',
+  ],
+};
+```
+
+### Sitemap dinámico para Workers de Cloudflare
+
+```javascript
+// worker-sitemap.js (para Cloudflare Workers)
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    
+    // Servir un sitemap.xml desde Worker
+    if (url.pathname === '/worker-sitemap.xml') {
+      const sitemapContent = await generateSitemapFromKV(env);
+      
+      return new Response(sitemapContent, {
+        headers: {
+          'Content-Type': 'application/xml',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+    
+    // Otras rutas continúan normalmente
+    return fetch(request);
+  }
+};
+
+// Generar sitemap desde Cloudflare KV
+async function generateSitemapFromKV(env) {
+  // Ejemplo: obtener URLs dinámicas desde KV
+  const urls = await env.MY_KV_NAMESPACE.get('dynamic_urls', { type: 'json' }) || [];
+  
+  // Crear XML
+  let sitemap = '<?xml version="1.0" encoding="UTF-8"?>';
+  sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+  
+  // Añadir URLs
+  for (const url of urls) {
+    sitemap += `
+      <url>
+        <loc>${url.loc}</loc>
+        <lastmod>${url.lastmod || new Date().toISOString()}</lastmod>
+        <changefreq>${url.changefreq || 'weekly'}</changefreq>
+        <priority>${url.priority || '0.7'}</priority>
+      </url>
+    `;
+  }
+  
+  sitemap += '</urlset>';
+  return sitemap;
+}
+```
+
+### Optimización de meta tags para Cloudflare
+
+```tsx
+// app/layout.tsx
+export async function generateMetadata({ params }) {
+  // URL base adaptativa según entorno
+  const baseUrl = process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}` 
+    : process.env.NEXT_PUBLIC_SITE_URL;
+  
+  // Metadata básica
+  const metadata = {
+    metadataBase: new URL(baseUrl),
+    title: 'Tu Sitio Web',
+    description: 'Descripción de tu sitio',
+    
+    // Enlaces al sitemap optimizado para Cloudflare
+    alternates: {
+      canonical: '/',
+      types: {
+        'application/rss+xml': `${baseUrl}/feed.xml`,
+      },
+    },
+    
+    // Cache buster para evitar problemas de caché en OG images
+    openGraph: {
+      images: [
+        {
+          url: `${baseUrl}/api/og?v=${Date.now()}`,
+          width: 1200,
+          height: 630,
+        },
+      ],
+    },
+    
+    // Control de robots específico según entorno
+    robots: {
+      index: process.env.VERCEL_ENV === 'production',
+      follow: process.env.VERCEL_ENV === 'production',
+      googleBot: {
+        index: process.env.VERCEL_ENV === 'production',
+        follow: process.env.VERCEL_ENV === 'production',
+      },
+    },
+  };
+  
+  return metadata;
+}
+```
+
+### Imágenes OG optimizadas para Cloudflare
+
+```typescript
+// app/api/og/route.ts
+import { ImageResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+
+export const runtime = 'edge';
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const title = searchParams.get('title') || 'Tu Sitio Web';
+  
+  // Generar imagen OG dinámica
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 60,
+          color: 'white',
+          background: 'linear-gradient(to bottom, #334155, #0f172a)',
+          width: '100%',
+          height: '100%',
+          textAlign: 'center',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        {title}
+      </div>
+    ),
+    {
+      width: 1200,
+      height: 630,
+      // Headers optimizados para Cloudflare
+      headers: {
+        'Cache-Control': 'public, max-age=86400, s-maxage=31536000',
+        'CDN-Cache-Control': 'max-age=86400',
+      }
+    }
+  );
+}
+```
+
+---
+
+## 🛠️ Reglas adicionales para Vercel y Cloudflare
+
+- Utilizar Vercel Edge para generar sitemaps dinámicos
+- Implementar headers específicos de Cloudflare para control de caché
+- Configurar entornos de Preview con noindex para evitar indexación duplicada
+- Implementar detección automática de entorno para políticas de robots.txt
+- Utilizar Enterprise Workers de Cloudflare para sitemap.xml de alto rendimiento
+- Configurar Page Rules en Cloudflare para optimizar robots.txt y sitemap.xml
+- Implementar monitoreo de indexación mediante la API de Google Search Console
+- Utilizar Workers para detectar y redireccionar User-Agents específicos
+- Implementar estrategia de imágenes OG dinámicas optimizadas para Cloudflare
+- Configurar WAF rules en Cloudflare para proteger contra scraping malicioso 

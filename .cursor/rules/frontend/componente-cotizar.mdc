@@ -1,0 +1,114 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla: componente-cotizar-button.mdc
+
+## 🎯 Propósito
+Establecer el comportamiento, diseño y uso estandarizado del componente `<CotizarButton />`, utilizado como llamado a la acción principal en todas las páginas del sitio web. Este botón debe ser visualmente llamativo, accesible, reutilizable, y dirigir siempre a una landing page de contacto o cotización (`/cotizar`, `/contacto`, etc.).
+
+---
+
+## 📌 Componente: `<CotizarButton />`
+
+### Ubicación
+`/components/ui/CotizarButton.tsx`
+
+### Props
+| Prop       | Tipo     | Descripción                                    |
+|------------|----------|------------------------------------------------|
+| `variant`  | string   | Estilo visual del botón: `solid`, `outline`, `ghost` |
+| `className`| string   | Clases adicionales para adaptar el layout si es necesario |
+
+### Código base
+
+```tsx
+import Link from 'next/link'
+
+export default function CotizarButton({ variant = 'solid', className = '' }) {
+  const base = 'rounded-full px-5 py-2 text-sm font-semibold transition'
+  const styles = {
+    solid: 'bg-black text-white hover:bg-neutral-800',
+    outline: 'border border-black text-black hover:bg-neutral-100',
+    ghost: 'text-black hover:underline',
+  }
+
+  return (
+    <Link
+      href="/cotizar"
+      className={`${base} ${styles[variant]} ${className}`}
+      data-analytics="cta-cotizar"
+    >
+      Cotizar
+    </Link>
+  )
+}
+
+
+
+⸻
+
+🧩 Comportamiento
+	•	Navega siempre a la página /cotizar o su equivalente
+	•	El texto debe ser claro: “Cotizar”, “Cotizar ahora”, o “Solicita tu cotización”
+	•	Debe usarse en:
+	•	Hero section
+	•	Header (desktop + mobile)
+	•	Footer
+	•	Cards de servicios o productos
+	•	Secciones intermedias como CTA
+
+⸻
+
+🎨 Estilos y variantes
+
+Variante:	Descripción
+solid (default):	Fondo sólido, alto contraste, ideal para Hero o CTA primario
+outline:	Contorno visible, ideal para secciones secundarias o dobles CTA
+ghost:	Solo texto, útil para Footer o zonas minimalistas
+
+
+
+⸻
+
+🧠 Reglas Cursor
+	•	Crear siempre el componente en /components/ui/CotizarButton.tsx
+	•	Usar siempre <Link href="/cotizar" /> (no botones ni window.location)
+	•	Implementar soporte para variant y className
+	•	Incluir data-analytics="cta-cotizar" para seguimiento de clics
+	•	Evitar duplicación: este debe ser el único botón para esa función
+	•	Debe estar disponible en todos los sitios generados por el boilerplate
+
+⸻
+
+📈 SEO y accesibilidad
+	•	El botón debe ser legible y clickable en mobile
+	•	Usar etiquetas semánticas y accesibles (ej. role="button" si necesario)
+	•	Asegurar contraste AA+ según WCAG 2.1
+	•	Optimizar página de destino (/cotizar) con:
+	•	H1 claro y directo
+	•	Formulario optimizado
+	•	Palabras clave relevantes
+	•	Elementos de confianza (logos, testimonios, etc.)
+
+⸻
+
+📊 Analítica y tracking
+	•	El botón debe incluir data-analytics="cta-cotizar"
+	•	Permitir compatibilidad con Google Tag Manager, Meta Pixel y otros sistemas
+	•	Integración futura con eventos personalizados en useTracking o similares
+
+⸻
+
+🔄 Adaptación para otros contextos
+
+Este componente también puede renombrarse y reutilizarse como:
+	•	<CTAButton variant="cotizar" />
+	•	<CTAButton variant="demo" />
+	•	<CTAButton variant="contacto" />
+
+Para ello, se puede extender esta regla como cta-button.mdc.
+
+⸻
+

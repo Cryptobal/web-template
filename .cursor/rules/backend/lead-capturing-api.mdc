@@ -1,0 +1,77 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: lead-capturing-api.mdc
+
+## 🎯 Propósito
+Diseñar una API segura, validada y escalable para capturar formularios de contacto o cotización desde un sitio web. La API debe validar los datos, extraer información contextual (como comuna/ciudad), y enviar el resultado a un servicio externo mediante webhook (ej: Make.com).
+
+---
+
+## 🔍 Estructura del formulario (Frontend)
+
+### 1. ✨ Datos de contacto
+- **Nombre**: string (requerido)
+- **Apellido**: string (requerido)
+- **Email**: string (email válido, requerido)
+- **Teléfono**: string (solo 9 dígitos numéricos, sin código país, requerido)
+
+### 2. 🏢 Información de empresa o proyecto
+- **Empresa**: string (requerido)
+- **Sitio web**: url (requerido)
+
+### 3. 💬 Detalle del requerimiento
+- Campo largo de texto (requerido)
+
+---
+
+## 🔁 Backend API (FastAPI o Express.js)
+
+### Endpoint:
+```http
+POST /api/contacto
+
+Validaciones requeridas:
+	•	Email válido (RFC estándar)
+	•	Teléfono: ^\d{9}$
+	•	Industria debe estar en el listado permitido
+	•	Dirección debe incluir comuna y ciudad extraídas vía Google Maps API
+
+⸻
+
+⚙️ Comportamiento esperado
+	1.	Validar los datos en el backend
+	2.	Enviar un POST a webhook externo (ej. Make.com, CRM, Sheets, etc.)
+	3.	Retornar respuesta JSON: { "status": "ok" }
+
+📤 Payload enviado por Webhook
+{
+  "nombre": "Carlos",
+  "apellido": "Soto",
+  "email": "carlos@empresa.cl",
+  "telefono": "987654321",
+  "empresa": "Mi Empresa",
+  "sitio_web": "https://empresa.cl",
+  "detalle": "Queremos integrar nuestros sistemas internos y automatizar procesos."
+}
+
+🧰 Tecnologías Recomendadas
+	•	Backend:
+	•	FastAPI + Pydantic (Python)
+	•	Express.js + Yup (Node.js)
+	•	Integración externa: axios o fetch para enviar webhook
+
+⸻
+
+🛠️ Reglas para Cursor (Frontend + Backend)
+	•	Frontend con React + TailwindCSS
+	•	Validación con React Hook Form + Yup
+	•	Envío con fetch() o axios al backend
+	•	Mostrar mensaje de éxito / error con feedback UX
+	•	Página accesible vía /cotizar o /contacto
+	•	Preparado para integración con tracking de conversiones (GA4, Meta Pixel)
+	•	Componentes reutilizables (<CotizarForm />) y código desacoplado
+
+  

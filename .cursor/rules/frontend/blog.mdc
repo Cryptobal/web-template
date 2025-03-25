@@ -1,0 +1,85 @@
+---
+description: 
+globs: /src/blog/*.md
+alwaysApply: false
+---
+# Regla: Blog en Markdown (`/src/blog/*.md`)
+
+## 🎯 Propósito
+Definir el estándar para la creación y renderizado de artículos de blog mediante archivos Markdown. Esta estructura asegura contenido de alta calidad optimizado para SEO, excelente rendimiento (SSG), escalabilidad editorial y facilidad de mantenimiento.
+
+---
+
+## 📁 Ubicación y Convención
+
+- Todos los posts deben ubicarse en: `/src/blog/*.md`
+- Cada archivo representa una entrada única del blog.
+- El nombre del archivo debe coincidir con el `slug` para consistencia.
+- El contenido debe estar en formato Markdown con metadatos `frontmatter`.
+
+---
+
+## ✅ Estructura del archivo Markdown (`.md`)
+
+```markdown
+---
+title: "Título del blog (enfocado en SEO)"
+slug: "url-amigable-del-post"
+description: "Resumen corto para Google y redes sociales"
+date: "2025-04-05"
+author: "Nombre del autor"
+tags: ["automatización", "IA", "negocios"]
+image: "https://cdn.tusitio.com/blog/slug.jpg"
+---
+
+Contenido principal del blog, con subtítulos, párrafos claros, listas y llamadas a la acción.
+
+⚙️ Comportamiento esperado (Cursor)
+
+Al detectar un archivo nuevo en /src/blog/*.md, el sistema debe:
+	1.	Crear automáticamente una página pública accesible vía /blog/[slug]
+	2.	Incluirlo en el listado general de /blog
+	3.	Generar una tarjeta visual <BlogCard /> reutilizable
+	4.	Aplicar etiquetas SEO automáticas (<title>, <meta>, OpenGraph, schema.org)
+	5.	Generar portada (og:image) automáticamente si no se especifica
+	6.	Renderizar contenido con soporte para enlaces, imágenes, código, tablas y rich text
+
+⸻
+
+📈 Reglas de SEO y Rendimiento
+	•	Cada post debe tener su URL en el formato: /blog/[slug]
+	•	El campo title se usará como <h1> y <title> SEO
+	•	El campo description se aplicará como meta description y para redes sociales
+	•	Las imágenes deben servirse desde CDN optimizado
+	•	Usar componentes como <Image /> con lazy loading y tamaño adaptable
+	•	Todas las páginas deben generarse mediante Static Site Generation (SSG) para velocidad y SEO
+
+⸻
+
+📄 Componente base para renderizado
+
+<article className="prose lg:prose-xl max-w-3xl mx-auto">
+  <h1>{title}</h1>
+  <p className="text-sm text-neutral-500">Publicado el {date} por {author}</p>
+  <Image src={image} alt={title} width={1200} height={630} priority />
+  <Markdown>{content}</Markdown>
+</article>
+
+🛠️ Reglas para Cursor (Frontend)
+	•	Esta regla aplica a todos los archivos en /src/blog/*.md
+	•	Utilizar plugin de Markdown con soporte para frontmatter
+	•	Generar automáticamente:
+	•	Página por post (/blog/[slug])
+	•	Índice general de blog (/blog)
+	•	Tarjetas <BlogCard /> por post
+	•	SEO full: <title>, meta, og:title, og:description, og:image, article:published_time
+	•	Todos los posts deben incluir obligatoriamente: title, slug, description, date, image
+
+⸻
+
+🧠 Recomendaciones editoriales
+	•	Usar títulos que resuelvan dudas o aporten valor (“Cómo…”, “Guía para…”, “Tendencias en…”)
+	•	Escribir en estilo conversacional pero profesional
+	•	Incluir llamados a la acción al final de cada post (enlace a servicios, contacto, etc.)
+	•	Incluir enlaces internos a otras páginas del sitio
+

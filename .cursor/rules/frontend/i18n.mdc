@@ -1,0 +1,846 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: i18n.mdc
+
+## 🎯 Propósito
+Establecer un sistema robusto de internacionalización (i18n) para el sitio web que permita servir contenido en múltiples idiomas, adaptado a las necesidades culturales y regionales específicas, mientras se mantiene una puntuación de 100 en PageSpeed Insights a través de optimizaciones de rendimiento, UX y SEO específicas para cada región.
+
+---
+
+## 🌐 Arquitectura de internacionalización
+
+### 1. Estructura de rutas i18n con Next.js
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { match } from '@formatjs/intl-localematcher';
+import Negotiator from 'negotiator';
+
+// Idiomas soportados
+export const locales = ['es', 'en', 'pt'];
+export const defaultLocale = 'es';
+
+// Función para obtener idioma preferido
+function getLocale(request: NextRequest): string {
+  // 1. Prioridad: parámetro en URL (?lang=xx)
+  const urlParam = request.nextUrl.searchParams.get('lang');
+  if (urlParam && locales.includes(urlParam)) {
+    return urlParam;
+  }
+  
+  // 2. Prioridad: cookie de preferencia persistente
+  const localeCookie = request.cookies.get('NEXT_LOCALE')?.value;
+  if (localeCookie && locales.includes(localeCookie)) {
+    return localeCookie;
+  }
+  
+  // 3. Prioridad: cabeceras Accept-Language
+  const headers = new Headers(request.headers);
+  const acceptLanguage = headers.get('accept-language');
+  
+  if (acceptLanguage) {
+    const negotiator = new Negotiator({
+      headers: { 'accept-language': acceptLanguage },
+    });
+    
+    try {
+      return match(
+        negotiator.languages(),
+        locales,
+        defaultLocale,
+      );
+    } catch (e) {
+      // En caso de error, usar idioma por defecto
+      console.error('Error matching locale:', e);
+    }
+  }
+  
+  // Usar locale por defecto como fallback
+  return defaultLocale;
+}
+
+// Redireccionar y configurar locale
+export function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  
+  // Ignorar assets estáticos, API, etc.
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/static') ||
+    pathname.includes('.')
+  ) {
+    return NextResponse.next();
+  }
+
+  // Verificar si ya estamos en una ruta de idioma
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  );
+
+  if (pathnameHasLocale) return NextResponse.next();
+
+  // Obtener locale basado en preferencias
+  const locale = getLocale(request);
+  
+  // Crear nueva URL con locale
+  const newUrl = new URL(
+    `/${locale}${pathname === '/' ? '' : pathname}${request.nextUrl.search}`,
+    request.url
+  );
+  
+  // Conservar parámetros de búsqueda y hash
+  if (request.nextUrl.search) {
+    newUrl.search = request.nextUrl.search;
+  }
+  
+  const response = NextResponse.redirect(newUrl);
+  
+  // Almacenar preferencia en cookie para futuras visitas
+  // Cookie segura, HttpOnly con 1 año de expiración
+  response.cookies.set('NEXT_LOCALE', locale, {
+    path: '/',
+    maxAge: 31536000, // 1 año
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+  
+  return response;
+}
+
+// Configurar rutas a interceptar
+export const config = {
+  matcher: ['/((?!_next|api|static|.*\\..*).*)'],
+};
+```
+
+### 2. Estructura de carpetas para app router
+
+```
+app/
+├── [lang]/              # Carpeta dinámica para el idioma
+│   ├── layout.tsx       # Layout con provider i18n
+│   ├── page.tsx         # Página principal 
+│   ├── nosotros/        # Rutas en español
+│   │   └── page.tsx     
+│   ├── about/           # Rutas en inglés 
+│   │   └── page.tsx     
+│   └── sobre/           # Rutas en portugués
+│       └── page.tsx     
+├── api/                 # API routes
+└── sitemap.xml/         # Sitemap con todas las versiones
+```
+
+---
+
+## 🔤 Sistema de traducciones
+
+### 1. Diccionarios de mensajes
+
+```typescript
+// dictionaries/index.ts
+import 'server-only';
+
+// Diccionarios para cada idioma
+export const dictionaries = {
+  en: () => import('./en.json').then((module) => module.default),
+  es: () => import('./es.json').then((module) => module.default),
+  pt: () => import('./pt.json').then((module) => module.default),
+};
+
+// dictionaries/es.json
+{
+  "common": {
+    "title": "Mi Sitio Web",
+    "menu": {
+      "home": "Inicio",
+      "about": "Acerca de",
+      "services": "Servicios",
+      "blog": "Blog",
+      "contact": "Contacto"
+    },
+    "footer": {
+      "copyright": "© 2023 Mi Sitio Web. Todos los derechos reservados."
+    }
+  },
+  "home": {
+    "hero": {
+      "title": "Bienvenido a Mi Sitio Web",
+      "subtitle": "La mejor solución para tu negocio",
+      "cta": "Empezar ahora"
+    },
+    "features": {
+      "title": "Nuestras características",
+      "items": [
+        {
+          "title": "Característica 1",
+          "description": "Descripción de la característica 1"
+        },
+        {
+          "title": "Característica 2",
+          "description": "Descripción de la característica 2"
+        }
+      ]
+    }
+  }
+}
+
+// Repetir estructura similar para other locales...
+```
+
+### 2. Obtener traducciones
+
+```typescript
+// lib/i18n.ts
+import 'server-only';
+import { dictionaries } from '@/dictionaries';
+
+// Tipo para diccionario
+export type Dictionary = Awaited<ReturnType<typeof dictionaries.es>>;
+
+// Función para obtener diccionario según locale
+export async function getDictionary(locale: string): Promise<Dictionary> {
+  // Validar que el locale esté soportado
+  if (!Object.keys(dictionaries).includes(locale)) {
+    return dictionaries.es();
+  }
+  
+  return dictionaries[locale as keyof typeof dictionaries]();
+}
+
+// Aplicar traducción en componente de página
+export default async function Page({ params }: { params: { lang: string } }) {
+  const dict = await getDictionary(params.lang);
+  
+  return (
+    <main>
+      <h1>{dict.home.hero.title}</h1>
+      <p>{dict.home.hero.subtitle}</p>
+      <button>{dict.home.hero.cta}</button>
+      
+      <section>
+        <h2>{dict.home.features.title}</h2>
+        <div className="features-grid">
+          {dict.home.features.items.map((feature, index) => (
+            <div key={index} className="feature-card">
+              <h3>{feature.title}</h3>
+              <p>{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
+```
+
+---
+
+## 🔀 Selector de idioma
+
+```tsx
+// components/LanguageSwitcher.tsx
+'use client';
+
+import { useParams, usePathname, useRouter } from 'next/navigation';
+import { locales } from '@/lib/i18n-config';
+import { useState, useEffect } from 'react';
+import { GlobeIcon } from '@heroicons/react/outline';
+
+export default function LanguageSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { lang } = useParams() as { lang: string };
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Cerrar el menú cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = () => setIsOpen(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+  
+  // Cambiar de idioma conservando la ruta actual
+  const switchLanguage = (newLocale: string) => {
+    // Obtener la ruta sin el parámetro de idioma actual
+    const pathWithoutLang = pathname.replace(`/${lang}`, '');
+    
+    // Construir la nueva ruta con el nuevo idioma
+    const newPath = `/${newLocale}${pathWithoutLang === '' ? '' : pathWithoutLang}`;
+    
+    // Navegar a la nueva ruta
+    router.push(newPath);
+    router.refresh(); // Forzar revalidación de datos para cargar nuevas traducciones
+    
+    setIsOpen(false);
+  };
+  
+  // Mapeo de códigos de idioma a nombres en sus propios idiomas
+  const languageNames: Record<string, string> = {
+    es: 'Español',
+    en: 'English',
+    pt: 'Português',
+  };
+  
+  // Prevenir propagación del evento para evitar que cierre por el efecto de clic global
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+  
+  return (
+    <div className="relative">
+      <button
+        onClick={handleToggleClick}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-label="Seleccionar idioma"
+        className="flex items-center space-x-1 px-3 py-2 rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+      >
+        <GlobeIcon className="h-5 w-5" />
+        <span>{languageNames[lang]}</span>
+      </button>
+      
+      {isOpen && (
+        <div className="absolute mt-2 right-0 w-40 rounded-md bg-white dark:bg-neutral-900 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+          <ul
+            role="listbox"
+            aria-label="Idiomas disponibles"
+            className="py-1 overflow-hidden"
+          >
+            {locales.map((locale) => (
+              <li key={locale}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    switchLanguage(locale);
+                  }}
+                  className={`block w-full text-left px-4 py-2 text-sm ${
+                    locale === lang
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                  role="option"
+                  aria-selected={locale === lang}
+                >
+                  {languageNames[locale]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🔍 SEO multilingüe
+
+### 1. Componente de metadatos internacionalizados
+
+```tsx
+// app/[lang]/layout.tsx
+import { Metadata } from 'next';
+import { getDictionary } from '@/lib/i18n';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { locales } from '@/lib/i18n-config';
+
+// Generar metadatos dinámicos según el idioma
+export async function generateMetadata({
+  params,
+}: {
+  params: { lang: string };
+}): Promise<Metadata> {
+  const dict = await getDictionary(params.lang);
+  
+  // URL base del sitio
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://tusitio.com';
+  
+  return {
+    title: {
+      template: `%s | ${dict.common.title}`,
+      default: dict.common.title,
+    },
+    description: dict.metadata.description,
+    metadataBase: new URL(baseUrl),
+    alternates: {
+      canonical: `/${params.lang}`,
+      languages: Object.fromEntries(
+        locales.map((locale) => [locale, `/${locale}`])
+      ),
+    },
+    openGraph: {
+      title: dict.common.title,
+      description: dict.metadata.description,
+      url: `${baseUrl}/${params.lang}`,
+      siteName: dict.common.title,
+      locale: params.lang,
+      type: 'website',
+      images: [
+        {
+          url: `${baseUrl}/${params.lang}/og-image.jpg`,
+          width: 1200,
+          height: 630,
+          alt: dict.metadata.ogImageAlt,
+        },
+      ],
+    },
+  };
+}
+
+export default function RootLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: { lang: string };
+}) {
+  return (
+    <html lang={params.lang} dir={params.lang === 'ar' ? 'rtl' : 'ltr'}>
+      <body>
+        <header>
+          <nav>
+            {/* ... otros elementos de navegación ... */}
+            <LanguageSwitcher />
+          </nav>
+        </header>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+### 2. Sitemap dinámico multilingüe
+
+```tsx
+// app/sitemap.xml/route.ts
+import { locales } from '@/lib/i18n-config';
+
+export async function GET() {
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://tusitio.com';
+  
+  // Rutas comunes en todos los idiomas
+  const commonRoutes = [
+    '',  // Página principal
+    '/about', // Acerca de
+    '/services', // Servicios
+    '/contact', // Contacto
+  ];
+  
+  // Rutas específicas por idioma
+  const localeSpecificRoutes: Record<string, string[]> = {
+    en: ['/blog/post-1', '/blog/post-2'],
+    es: ['/blog/publicacion-1', '/blog/publicacion-2'],
+    pt: ['/blog/post-1-pt', '/blog/post-2-pt'],
+  };
+  
+  // Generar entradas de sitemap
+  const sitemapEntries = locales.flatMap(locale => {
+    // Rutas comunes para este idioma
+    const routes = commonRoutes.map(route => ({
+      url: `${baseUrl}/${locale}${route}`,
+      lastModified: new Date().toISOString(),
+      changeFrequency: 'weekly',
+      priority: route === '' ? 1.0 : 0.8,
+      alternateRefs: locales
+        .filter(altLocale => altLocale !== locale)
+        .map(altLocale => ({
+          hreflang: altLocale,
+          href: `${baseUrl}/${altLocale}${route}`,
+        })),
+    }));
+    
+    // Añadir rutas específicas por idioma
+    const specificRoutes = (localeSpecificRoutes[locale] || []).map(route => ({
+      url: `${baseUrl}/${locale}${route}`,
+      lastModified: new Date().toISOString(),
+      changeFrequency: 'weekly',
+      priority: 0.7,
+      // No hay alternateRefs para estas rutas específicas
+    }));
+    
+    return [...routes, ...specificRoutes];
+  });
+  
+  // Generar XML del sitemap
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  ${sitemapEntries.map(entry => `
+  <url>
+    <loc>${entry.url}</loc>
+    <lastmod>${entry.lastModified}</lastmod>
+    <changefreq>${entry.changeFrequency}</changefreq>
+    <priority>${entry.priority}</priority>
+    ${(entry.alternateRefs || []).map(alt => `
+    <xhtml:link 
+      rel="alternate" 
+      hreflang="${alt.hreflang}" 
+      href="${alt.href}" 
+    />`).join('')}
+  </url>
+  `).join('')}
+</urlset>`;
+
+  return new Response(sitemap, {
+    headers: {
+      'Content-Type': 'application/xml',
+      'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+    },
+  });
+}
+```
+
+---
+
+## 📅 Formato de fechas, números y unidades
+
+### 1. Componente de formateo de fecha
+
+```tsx
+// components/ui/FormattedDate.tsx
+'use client';
+
+import { useParams } from 'next/navigation';
+
+interface FormattedDateProps {
+  date: Date | string;
+  format?: 'long' | 'short' | 'numeric';
+  className?: string;
+}
+
+export function FormattedDate({
+  date,
+  format = 'long',
+  className,
+}: FormattedDateProps) {
+  const { lang } = useParams() as { lang: string };
+  const dateObject = date instanceof Date ? date : new Date(date);
+  
+  // Opciones de formato según el tipo solicitado
+  const formatOptions: Intl.DateTimeFormatOptions = 
+    format === 'long'
+      ? {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }
+      : format === 'short'
+      ? {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        }
+      : {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        };
+  
+  // Formatear según locale
+  const formattedDate = new Intl.DateTimeFormat(lang, formatOptions).format(dateObject);
+  
+  return (
+    <time dateTime={dateObject.toISOString()} className={className}>
+      {formattedDate}
+    </time>
+  );
+}
+```
+
+### 2. Componente de formateo de números
+
+```tsx
+// components/ui/FormattedNumber.tsx
+'use client';
+
+import { useParams } from 'next/navigation';
+
+interface FormattedNumberProps {
+  value: number;
+  style?: 'decimal' | 'currency' | 'percent';
+  currency?: string;
+  maximumFractionDigits?: number;
+  className?: string;
+}
+
+export function FormattedNumber({
+  value,
+  style = 'decimal',
+  currency = 'USD',
+  maximumFractionDigits = 2,
+  className,
+}: FormattedNumberProps) {
+  const { lang } = useParams() as { lang: string };
+  
+  // Opciones de formato
+  const options: Intl.NumberFormatOptions = {
+    style,
+    maximumFractionDigits,
+  };
+  
+  // Añadir currency si es necesario
+  if (style === 'currency') {
+    options.currency = currency;
+  }
+  
+  // Formatear según locale
+  const formattedNumber = new Intl.NumberFormat(lang, options).format(value);
+  
+  return <span className={className}>{formattedNumber}</span>;
+}
+```
+
+---
+
+## 🚀 Optimizaciones de rendimiento i18n
+
+### 1. Carga diferida de diccionarios
+
+```typescript
+// lib/i18n-client.ts
+'use client';
+
+import { useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import type { Dictionary } from '@/lib/i18n';
+
+// Caché de diccionarios cargados
+const dictionaryCache: Record<string, Dictionary> = {};
+
+export function useClientDictionary() {
+  const { lang } = useParams() as { lang: string };
+  const [dictionary, setDictionary] = useState<Dictionary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    async function loadDictionary() {
+      setIsLoading(true);
+      
+      try {
+        // Usar caché si está disponible
+        if (dictionaryCache[lang]) {
+          setDictionary(dictionaryCache[lang]);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Cargar bajo demanda
+        const module = await import(`@/dictionaries/${lang}.json`);
+        dictionaryCache[lang] = module.default;
+        setDictionary(module.default);
+      } catch (e) {
+        console.error(`Error loading dictionary for locale ${lang}:`, e);
+        // Fallback a español si hay error
+        if (lang !== 'es') {
+          const fallbackModule = await import('@/dictionaries/es.json');
+          setDictionary(fallbackModule.default);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    loadDictionary();
+  }, [lang]);
+  
+  return { dictionary, isLoading };
+}
+```
+
+### 2. Fuentes específicas por idioma
+
+```typescript
+// app/[lang]/layout.tsx (extracto)
+import { Inter, Noto_Sans_JP } from 'next/font/google';
+
+// Fuente para idiomas latinos
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  variable: '--font-inter',
+  preload: true,
+});
+
+// Fuente para japonés (ejemplo de idioma no-latino)
+const notoJP = Noto_Sans_JP({
+  subsets: ['japanese'],
+  display: 'swap',
+  variable: '--font-noto-jp',
+  preload: false, // Solo cargar cuando sea necesario
+});
+
+export default function RootLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: { lang: string };
+}) {
+  // Elegir fuente según idioma
+  const fontClass =
+    params.lang === 'ja' ? notoJP.variable : inter.variable;
+  
+  return (
+    <html lang={params.lang} dir={params.lang === 'ar' ? 'rtl' : 'ltr'}>
+      <body className={fontClass}>
+        {/* ... */}
+      </body>
+    </html>
+  );
+}
+```
+
+### 3. Precargar solo traducciones necesarias
+
+```typescript
+// lib/i18n-preload.ts
+import { cache } from 'react';
+import type { Dictionary } from '@/lib/i18n';
+
+// Usamos React cache para evitar cargas múltiples
+export const preloadDictionary = cache(
+  async (locale: string): Promise<Dictionary> => {
+    try {
+      const dict = (await import(`@/dictionaries/${locale}.json`)).default;
+      return dict;
+    } catch (error) {
+      console.error(`Failed to load dictionary for ${locale}`, error);
+      // Fallback a diccionario en español
+      const fallback = (await import('@/dictionaries/es.json')).default;
+      return fallback;
+    }
+  }
+);
+
+// En componentes de página:
+export async function generateMetadata({
+  params,
+}: {
+  params: { lang: string };
+}): Promise<Metadata> {
+  // Precargar diccionario para este idioma
+  const dict = await preloadDictionary(params.lang);
+  
+  // ... usar dict para meta tags
+}
+```
+
+---
+
+## 📱 Consideraciones especiales
+
+### 1. Soporte de RTL (Right-to-Left)
+
+```tsx
+// components/RTLProvider.tsx
+'use client';
+
+import { useParams } from 'next/navigation';
+import { createContext, useContext } from 'react';
+
+// Lista de idiomas RTL
+const rtlLanguages = ['ar', 'he', 'fa', 'ur'];
+
+// Contexto para RTL
+type RTLContextType = {
+  isRTL: boolean;
+};
+
+const RTLContext = createContext<RTLContextType>({ isRTL: false });
+
+export function RTLProvider({ children }: { children: React.ReactNode }) {
+  const { lang } = useParams() as { lang: string };
+  const isRTL = rtlLanguages.includes(lang);
+  
+  return (
+    <RTLContext.Provider value={{ isRTL }}>
+      {children}
+    </RTLContext.Provider>
+  );
+}
+
+// Hook para usar en componentes
+export function useRTL() {
+  return useContext(RTLContext);
+}
+
+// Uso en componentes:
+// const { isRTL } = useRTL();
+// className={`flex ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}
+```
+
+### 2. Localización de URLs y rutas
+
+```typescript
+// lib/url-localizer.ts
+import { locales } from '@/lib/i18n-config';
+
+// Mapeo de rutas por idioma
+export const routeMapping: Record<string, Record<string, string>> = {
+  es: {
+    'about': 'nosotros',
+    'services': 'servicios',
+    'contact': 'contacto',
+  },
+  en: {
+    'about': 'about',
+    'services': 'services',
+    'contact': 'contact',
+  },
+  pt: {
+    'about': 'sobre',
+    'services': 'servicos',
+    'contact': 'contato',
+  },
+};
+
+// Función para traducir una ruta
+export function localizeRoute(route: string, sourceLocale: string, targetLocale: string): string {
+  if (sourceLocale === targetLocale) return route;
+  
+  // Solo traducir primer nivel de la ruta
+  const routeParts = route.split('/').filter(Boolean);
+  if (routeParts.length === 0) return '';
+  
+  const mainRoute = routeParts[0];
+  const sourceMapping = routeMapping[sourceLocale] || {};
+  
+  // Buscar la versión canónica (inglés)
+  const canonicalRoute = Object.entries(sourceMapping)
+    .find(([canonical, localized]) => localized === mainRoute)?.[0] || mainRoute;
+  
+  // Buscar la traducción en el idioma destino
+  const targetMapping = routeMapping[targetLocale] || {};
+  const localizedRoute = targetMapping[canonicalRoute] || canonicalRoute;
+  
+  // Reconstruir la ruta completa
+  return localizedRoute + (routeParts.length > 1 ? `/${routeParts.slice(1).join('/')}` : '');
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (i18n)
+
+- Implementar middleware de redirección para siempre incluir código de idioma en URLs
+- Usar enrutamiento por idioma con carpetas dinámicas `[lang]` en app router
+- Organizar traducciones en archivos JSON por idioma, separados por secciones
+- Incluir etiquetas `hreflang` en todas las páginas con referencias a versiones alternas
+- Implementar sitemap.xml con enlaces alternativos para cada idioma
+- Usar etiqueta `<html lang="">` adecuada en cada página según idioma
+- Optimizar carga tardía de traducciones que no sean del idioma principal
+- Formatear fechas y números según convenciones locales con Intl
+- Implementar soporte RTL para idiomas árabe, hebreo, etc.
+- Usar URLs localizadas para mejorar SEO en idiomas específicos

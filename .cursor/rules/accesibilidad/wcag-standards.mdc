@@ -1,0 +1,135 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: wcag-standards.mdc
+
+## 🎯 Propósito
+Establecer los estándares mínimos de accesibilidad web basados en WCAG 2.1 nivel AA, asegurando que el sitio sea accesible para personas con discapacidades y cumpliendo con normativas internacionales.
+
+---
+
+## 🌟 Principios WCAG 2.1
+
+### 1. Perceptible
+La información y los componentes de la interfaz deben ser presentados de forma que puedan ser percibidos.
+
+#### Reglas específicas:
+- Proporcionar alternativas textuales para contenido no textual (imágenes, vídeos)
+- Ofrecer subtítulos y transcripciones para contenido audiovisual
+- Crear contenido adaptable que pueda presentarse de diferentes formas
+- Asegurar suficiente contraste entre texto y fondo (mínimo 4.5:1)
+- No usar solo color para transmitir información
+- Permitir control de reproducción de audio
+
+```tsx
+// Ejemplo de imagen accesible
+<Image 
+  src="/imagen.jpg" 
+  alt="Técnico instalando un sistema de seguridad en una entrada" // Alt descriptivo
+  width={800} 
+  height={600} 
+/>
+
+// Ejemplo de contraste adecuado
+<p className="text-neutral-900 bg-white"> // Asegura contraste 21:1
+  Texto con alto contraste
+</p>
+```
+
+### 2. Operable
+Los componentes de la interfaz y la navegación deben ser operables.
+
+#### Reglas específicas:
+- Toda funcionalidad debe ser accesible mediante teclado
+- Proporcionar tiempo suficiente para leer y usar el contenido
+- No diseñar contenido que pueda causar convulsiones o reacciones físicas
+- Proporcionar medios para ayudar a los usuarios a navegar y encontrar contenido
+- Facilitar métodos de entrada alternativos al teclado
+
+```tsx
+// Botón accesible con navegación por teclado
+<button 
+  onClick={handleClick}
+  onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+  tabIndex={0} // Asegura que sea accesible mediante teclado
+  aria-label="Enviar formulario"
+>
+  Enviar
+</button>
+```
+
+### 3. Comprensible
+La información y el funcionamiento de la interfaz deben ser comprensibles.
+
+#### Reglas específicas:
+- El texto debe ser legible y comprensible
+- Las páginas web deben aparecer y funcionar de manera predecible
+- Ayudar a los usuarios a evitar y corregir errores
+
+```tsx
+// Validación de formulario con mensajes claros
+<form onSubmit={handleSubmit}>
+  <label htmlFor="email">Correo electrónico:</label>
+  <input 
+    id="email"
+    type="email"
+    aria-required="true"
+    aria-invalid={errors.email ? "true" : "false"}
+  />
+  {errors.email && (
+    <p role="alert" className="text-red-500">
+      Por favor, introduce un correo electrónico válido
+    </p>
+  )}
+</form>
+```
+
+### 4. Robusto
+El contenido debe ser suficientemente robusto para ser interpretado por una amplia variedad de agentes de usuario, incluyendo tecnologías asistivas.
+
+#### Reglas específicas:
+- Maximizar la compatibilidad con agentes de usuario actuales y futuros
+- Asegurar que el HTML sea válido y correctamente estructurado
+
+```tsx
+// HTML semántico y estructurado
+<article>
+  <h1>Título principal</h1>
+  <p>Contenido introductorio</p>
+  
+  <section>
+    <h2>Subsección</h2>
+    <p>Más contenido...</p>
+  </section>
+</article>
+```
+
+---
+
+## 🔍 Herramientas de validación
+
+### 1. Verificación automatizada
+- Lighthouse Accessibility Score (mínimo 90)
+- axe DevTools (0 errores críticos)
+- WAVE Web Accessibility Evaluation Tool
+
+### 2. Verificación manual
+- Navegación completa con teclado (Tab, Enter, Escape)
+- Pruebas con lectores de pantalla (NVDA, VoiceOver)
+- Comprobación de contraste en todos los estados (hover, focus, active)
+
+---
+
+## 🛠️ Reglas para Cursor (Frontend)
+
+- Usar HTML semántico (nav, header, main, footer, article, section)
+- Implementar focus-visible para todos los elementos interactivos
+- Mantener una jerarquía de encabezados lógica (h1 → h2 → h3)
+- Asegurar ratio de contraste mínimo de 4.5:1 para texto normal
+- Implementar skiplinks para navegación con teclado
+- Proporcionar textos alternativos descriptivos para todas las imágenes
+- Usar aria-labels y aria-describedby cuando sea necesario
+- Todos los formularios deben tener labels visibles (no solo placeholders)
+- Asegurar que los mensajes de error sean anunciados por lectores de pantalla

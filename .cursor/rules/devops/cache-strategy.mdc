@@ -1,0 +1,452 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regla: cache-strategy.mdc
+
+## 🎯 Propósito
+Establecer estrategias efectivas de caché para mejorar el rendimiento, reducir la carga en servidores y bases de datos, y ofrecer una experiencia de usuario optimizada, definiendo políticas claras por tipo de recurso y escenario de uso.
+
+---
+
+## 🌐 Caché en el navegador
+
+### 1. Encabezados HTTP
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  
+  // Determinar tipo de contenido desde la URL
+  const url = request.nextUrl.pathname;
+  
+  // Estrategia por tipo de contenido
+  if (url.match(/\.(jpg|jpeg|png|webp|avif|gif|ico)$/)) {
+    // Imágenes estáticas - caché largo
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (url.match(/\.(css|js)$/)) {
+    // Recursos estáticos - caché con revalidación
+    response.headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+  } else if (url.startsWith('/api/')) {
+    // Endpoints API - variar por request
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+  } else {
+    // Páginas HTML - verificar frescura pero permitir caché
+    response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate');
+  }
+  
+  return response;
+}
+
+export const config = {
+  matcher: [
+    // Aplicar a todas las rutas excepto las específicamente excluidas
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+```
+
+### 2. Service Worker para caché offline
+
+```typescript
+// public/sw.js
+const CACHE_NAME = 'app-cache-v1';
+const RUNTIME_CACHE = 'runtime-cache';
+
+const PRECACHE_URLS = [
+  '/',
+  '/offline',
+  '/styles/main.css',
+  '/scripts/main.js',
+  '/images/logo.png',
+  '/images/offline.svg',
+];
+
+// Instalación - precachear recursos críticos
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// Activación - limpiar cachés antiguas
+self.addEventListener('activate', event => {
+  const currentCaches = [CACHE_NAME, RUNTIME_CACHE];
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return cacheNames.filter(cacheName => !currentCaches.includes(cacheName));
+    }).then(cachesToDelete => {
+      return Promise.all(cachesToDelete.map(cacheToDelete => {
+        return caches.delete(cacheToDelete);
+      }));
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Estrategia para recursos de red
+self.addEventListener('fetch', event => {
+  // Solo manejar peticiones GET
+  if (event.request.method !== 'GET') return;
+  
+  // Skip cross-origin requests
+  if (!event.request.url.startsWith(self.location.origin)) return;
+  
+  // Estrategia para API: Network first, fallback a offline
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Clonar respuesta para caché
+          const responseToCache = response.clone();
+          caches.open(RUNTIME_CACHE)
+            .then(cache => cache.put(event.request, responseToCache));
+          return response;
+        })
+        .catch(() => {
+          // Fallback a caché si existe
+          return caches.match(event.request)
+            .then(cachedResponse => {
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+              // Si no hay caché, mostrar página offline
+              return caches.match('/offline');
+            });
+        })
+    );
+    return;
+  }
+  
+  // Estrategia estándar: Stale-while-revalidate
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        // Usar caché mientras se revalida
+        const fetchPromise = fetch(event.request)
+          .then(networkResponse => {
+            // Actualizar caché con respuesta nueva
+            const responseToCache = networkResponse.clone();
+            caches.open(RUNTIME_CACHE)
+              .then(cache => cache.put(event.request, responseToCache));
+            return networkResponse;
+          })
+          .catch(error => {
+            console.error('Fetch error:', error);
+            // Si hay caché, usarla a pesar del error
+            if (cachedResponse) return cachedResponse;
+            // Fallback a página offline
+            return caches.match('/offline');
+          });
+          
+        // Devolver caché inmediatamente si existe
+        return cachedResponse || fetchPromise;
+      })
+  );
+});
+```
+
+---
+
+## 💾 Caché en el servidor
+
+### 1. Caché en memoria con SWR
+
+```typescript
+// hooks/useSWRCache.ts
+import useSWR, { SWRConfiguration } from 'swr';
+
+// Función fetcher genérica
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Error fetching: ${res.status}`);
+  }
+  return res.json();
+};
+
+// Configuraciones por tipo de recurso
+const cacheConfigs = {
+  // Datos que cambian con frecuencia
+  dynamic: {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshInterval: 30000, // 30 segundos
+  } as SWRConfiguration,
+  
+  // Datos que cambian con poca frecuencia
+  static: {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    refreshInterval: 3600000, // 1 hora
+  } as SWRConfiguration,
+  
+  // Datos de referencia que raramente cambian
+  reference: {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    refreshInterval: 0, // No revalidar automáticamente
+    revalidateIfStale: false,
+  } as SWRConfiguration,
+};
+
+// Hook personalizado con presets de caché
+export function useData<T>(
+  url: string | null,
+  cacheType: keyof typeof cacheConfigs = 'dynamic',
+  customConfig: SWRConfiguration = {}
+) {
+  const config = {
+    ...cacheConfigs[cacheType],
+    ...customConfig,
+  };
+  
+  return useSWR<T>(
+    url,
+    fetcher,
+    config
+  );
+}
+```
+
+### 2. Caché distribuida con Redis
+
+```typescript
+// lib/cache/redis.ts
+import { createClient } from 'redis';
+import { env } from '@/lib/env';
+
+// Cliente Redis para caché distribuida
+const redisClient = createClient({
+  url: env.REDIS_URL,
+  socket: {
+    reconnectStrategy: (retries) => {
+      // Backoff exponencial con max 10 segundos
+      const delay = Math.min(Math.pow(2, retries) * 100, 10000);
+      return delay;
+    },
+  },
+});
+
+redisClient.on('error', (err) => {
+  console.error('Redis Client Error:', err);
+});
+
+// Conectar al inicio
+if (env.NODE_ENV !== 'test') {
+  redisClient.connect().catch(console.error);
+}
+
+// Wrapper para operaciones de caché
+export const redisCache = {
+  // Obtener valor de caché
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const data = await redisClient.get(key);
+      if (!data) return null;
+      return JSON.parse(data) as T;
+    } catch (error) {
+      console.error('Redis GET error:', error);
+      return null;
+    }
+  },
+  
+  // Guardar en caché con TTL
+  async set<T>(key: string, value: T, ttlSeconds = 3600): Promise<void> {
+    try {
+      const serialized = JSON.stringify(value);
+      await redisClient.set(key, serialized, { EX: ttlSeconds });
+    } catch (error) {
+      console.error('Redis SET error:', error);
+    }
+  },
+  
+  // Invalidar caché
+  async invalidate(key: string): Promise<void> {
+    try {
+      await redisClient.del(key);
+    } catch (error) {
+      console.error('Redis DEL error:', error);
+    }
+  },
+  
+  // Invalidar por patrón
+  async invalidatePattern(pattern: string): Promise<void> {
+    try {
+      const keys = await redisClient.keys(pattern);
+      if (keys.length > 0) {
+        await redisClient.del(keys);
+      }
+    } catch (error) {
+      console.error('Redis pattern invalidate error:', error);
+    }
+  },
+};
+```
+
+### 3. Implementación en API Routes
+
+```typescript
+// app/api/products/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { redisCache } from '@/lib/cache/redis';
+import { fetchProducts } from '@/lib/data/products';
+
+export async function GET(request: NextRequest) {
+  const category = request.nextUrl.searchParams.get('category');
+  const sortBy = request.nextUrl.searchParams.get('sortBy') || 'popularity';
+  
+  // Clave de caché basada en parámetros
+  const cacheKey = `products:${category || 'all'}:${sortBy}`;
+  
+  // Intentar obtener de caché primero
+  const cachedData = await redisCache.get(cacheKey);
+  if (cachedData) {
+    return NextResponse.json(cachedData);
+  }
+  
+  // Si no está en caché, obtener de origen
+  try {
+    const products = await fetchProducts({ category, sortBy });
+    
+    // Calcular TTL basado en volatilidad de datos
+    const ttl = category === 'new_arrivals' ? 300 : 3600; // 5 min o 1 hora
+    
+    // Guardar en caché
+    await redisCache.set(cacheKey, products, ttl);
+    
+    return NextResponse.json(products);
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch products' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+---
+
+## 🧠 Caché en la base de datos
+
+### 1. Estrategias de consulta optimizada
+
+```typescript
+// lib/db/queryCache.ts
+import { PrismaClient } from '@prisma/client';
+import { redisCache } from '@/lib/cache/redis';
+
+const prisma = new PrismaClient();
+
+// Tipos de caché para diferentes consultas
+export enum QueryCacheType {
+  SHORT = 'short',     // 1 minuto
+  MEDIUM = 'medium',   // 10 minutos
+  LONG = 'long',       // 1 hora
+  EXTENDED = 'extended', // 1 día
+}
+
+const TTL_MAP = {
+  [QueryCacheType.SHORT]: 60,
+  [QueryCacheType.MEDIUM]: 600,
+  [QueryCacheType.LONG]: 3600,
+  [QueryCacheType.EXTENDED]: 86400,
+};
+
+// Envolver consultas en caché
+export async function cachedQuery<T>({
+  key,
+  queryFn,
+  type = QueryCacheType.MEDIUM,
+  forceRefresh = false,
+}: {
+  key: string;
+  queryFn: () => Promise<T>;
+  type?: QueryCacheType;
+  forceRefresh?: boolean;
+}): Promise<T> {
+  const cacheKey = `db:${key}`;
+  const ttl = TTL_MAP[type];
+  
+  // Si se fuerza refresco, saltear caché
+  if (!forceRefresh) {
+    const cached = await redisCache.get<T>(cacheKey);
+    if (cached) return cached;
+  }
+  
+  // Ejecutar consulta
+  const result = await queryFn();
+  
+  // Guardar en caché
+  await redisCache.set(cacheKey, result, ttl);
+  
+  return result;
+}
+
+// Ejemplo de uso
+export async function getPopularProducts(categoryId?: string, limit = 10) {
+  const cacheKey = `popular_products:${categoryId || 'all'}:${limit}`;
+  
+  return cachedQuery({
+    key: cacheKey,
+    type: QueryCacheType.MEDIUM,
+    queryFn: async () => {
+      return prisma.product.findMany({
+        where: categoryId ? { categoryId } : undefined,
+        orderBy: { viewCount: 'desc' },
+        take: limit,
+        include: { category: true },
+      });
+    },
+  });
+}
+
+// Invalidar caché cuando los datos cambian
+export async function invalidateProductCache(productId: string) {
+  // Invalidar caché específica del producto
+  await redisCache.invalidate(`db:product:${productId}`);
+  
+  // Invalidar cualquier lista que pueda contener el producto
+  await redisCache.invalidatePattern('db:popular_products:*');
+  await redisCache.invalidatePattern('db:recent_products:*');
+  
+  // También se podría invalidar caché a nivel de categoría
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { categoryId: true },
+  });
+  
+  if (product?.categoryId) {
+    await redisCache.invalidatePattern(`db:category:${product.categoryId}:*`);
+  }
+}
+```
+
+---
+
+## 🛠️ Reglas para Cursor (Estrategia de Caché)
+
+- Definir TTL (tiempo de vida) adecuado por tipo de recurso y frecuencia de cambio
+- Implementar caché en múltiples niveles (navegador, CDN, servidor, base de datos)
+- Utilizar claves de caché que reflejen los parámetros que afectan el resultado
+- Implementar estrategia de invalidación proactiva para mantener consistencia
+- Evitar caché para datos sensibles o específicos de usuario sin validación
+- Considerar estrategias como stale-while-revalidate para mejor experiencia
+- Establecer encabezados Cache-Control apropiados por tipo de recurso
+- Implementar almacenamiento offline para PWA cuando sea aplicable
+- Usar ETags para recursos que cambian con frecuencia impredecible
+- Monitorear hit ratio de caché y ajustar estrategia según sea necesario
+- Considerar implicaciones de GDPR/CCPA para caché de datos de usuario
+- Implementar mecanismos de purga de caché en despliegues
+- Evitar caché indiscriminado de APIs externas que puedan cambiar
+- Considerar estrategias de caché diferentes por entorno (dev/prod)
+- Documentar claramente la estrategia de caché para cada componente/ruta
