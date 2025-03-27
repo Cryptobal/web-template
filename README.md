@@ -1,137 +1,109 @@
-# Fábrica de Sitios Web Optimizados
+# 🧱 Fábrica de Sitios Web Optimizados
 
-## 📚 Introducción
-
-Este repositorio contiene un conjunto de reglas MDC (Markdown Component) que conforman la base para nuestra fábrica de sitios web optimizados. Estas reglas están diseñadas para estandarizar el desarrollo, garantizando consistencia, calidad y rendimiento excepcional en todos los proyectos derivados.
-
-## 🎯 Propósito
-
-- **Rendimiento superior**: Todos los sitios alcanzan 90+ en Core Web Vitals
-- **SEO Técnico optimizado**: Estructura, metadatos y contenido pensados para buscadores
-- **Escalabilidad**: Arquitectura que crece con las necesidades del negocio
-- **Experiencia UI/UX moderna**: Interfaces coherentes, accesibles y atractivas
-- **Componentes reutilizables**: Biblioteca completa de elementos listos para usar
-- **Infraestructura robusta**: Integración perfecta con Cloudflare + Vercel
-- **Desarrollo acelerado**: Reducción drástica del tiempo de implementación
-
-## 🧩 Estructura de reglas
-
-### `base/` - Configuración fundamental
-
-Establece la arquitectura y configuración base del proyecto.
-
-- **estructura-carpetas.mdc**: Organización estandarizada de directorios y archivos
-- **next-config.mdc**: Configuración optimizada para Next.js
-- **typescript.mdc**: Estándares y buenas prácticas de TypeScript
-- **env-variables.mdc**: Gestión de variables de entorno
-- **seguridad.mdc**: Medidas de protección y encabezados HTTP seguros
-
-### `frontend/` - Interfaz y experiencia de usuario
-
-Define los componentes visuales y la experiencia del usuario.
-
-- **design-system.mdc**: Sistema de diseño con tokens, componentes y patrones
-- **header.mdc**: Estructura y comportamiento del encabezado del sitio
-- **footer.mdc**: Implementación estandarizada del pie de página
-- **componentes-ux.mdc**: Biblioteca de componentes optimizados para Core Web Vitals
-- **imagenes.mdc**: Gestión y optimización de recursos visuales vía CDN
-- **performance.mdc**: Estrategias avanzadas de optimización de rendimiento
-- **i18n.mdc**: Implementación de internacionalización
-- **pwa-offline.mdc**: Soporte para Progressive Web App y funcionalidad offline
-- **sitemap-robots.mdc**: Generación automática de sitemaps y configuración de robots.txt
-
-### `backend/` - Lógica y servicios
-
-Establece la infraestructura para el procesamiento y gestión de datos.
-
-- **cms-integracion.mdc**: Conexión con sistemas de gestión de contenido headless
-- **lead-capturing-api.mdc**: API para captura de formularios y contactos
-- **schema-org.mdc**: Implementación de datos estructurados para SEO
-- **error-monitoring.mdc**: Sistema de monitoreo y reporte de errores
-- **state-management.mdc**: Arquitectura de gestión de estado global
-
-### `analytics/` - Medición y seguimiento
-
-Herramientas para analítica y tracking.
-
-- **consent-manager.mdc**: Gestión de consentimiento de cookies GDPR/CCPA/LGPD
-- **tracking-conversiones.mdc**: Seguimiento unificado de eventos y conversiones
-
-### `devops/` - Integración y despliegue
-
-Automatización del ciclo de vida del desarrollo.
-
-- **ci-cd.mdc**: Flujos de integración y despliegue continuo
-- **testing.mdc**: Estrategias de pruebas unitarias, integración y E2E
-- **deploy.mdc**: Proceso estandarizado de despliegue
-- **cloudflare-vercel/integracion.mdc**: Configuración óptima de CDN y hosting
-- **cloudflare-vercel/rendimiento.mdc**: Optimizaciones específicas para la infraestructura
-
-## 🚀 Cómo usar esta fábrica
-
-### Iniciar un nuevo proyecto
-
-1. Clona este repositorio como plantilla base:  
-   `git clone https://github.com/tuusuario/fabrica-sitios-web.git [nombre-proyecto]`
-2. Entra a la carpeta del nuevo proyecto:  
-   `cd [nombre-proyecto]`
-3. Ejecuta el script de inicialización para preparar la estructura del sitio:  
-   `npm run init-project`
-   > Este comando:
-   > - Crea la estructura `/app`, `/components`, `/lib`, `/public`, `/docs`
-   > - Copia las reglas `.mdc` en `.cursor/rules/`
-   > - Instala dependencias clave (Next.js, TailwindCSS, etc.)
-   > - Crea páginas desde los documentos Markdown en `/docs/`
-   > - Lanza el servidor local con `next dev`
-4. Abre Cursor o tu editor preferido y comienza a desarrollar 🚀
-
-### Agregar contenido del sitio (textos)
-
-1. Crea documentos `.md` dentro de la carpeta `/docs/` para cada página:
-   - `inicio.md`
-   - `quienes-somos.md`
-   - `servicios.md`
-   - `contacto.md`, etc.
-2. Cada documento debe seguir el [template base de páginas](./docs/templates/page-template.md)
-3. El sistema generará automáticamente la estructura de páginas desde esos documentos.
-
-## 🔄 Ciclo de desarrollo
-
-1. **Planificación**: Define qué reglas base utilizarás y cuáles personalizarás
-2. **Desarrollo**: Construye sobre los componentes pre-optimizados
-3. **Testing**: Ejecuta pruebas unitarias y de rendimiento automatizadas
-4. **Despliegue**: Utiliza el pipeline CI/CD pre-configurado
-5. **Monitoreo**: Supervisa el rendimiento y comportamiento en producción
-
-## 📈 Beneficios
-
-- **Desarrollo 3x más rápido** gracias a componentes reutilizables
-- **Rendimiento garantizado** con prácticas probadas
-- **Consistencia entre proyectos** independientemente del equipo de desarrollo
-- **Mantenimiento simplificado** con estructura estandarizada
-- **Escalabilidad** desde landing pages hasta plataformas complejas
-
-## 🧠 Contribuciones
-
-Los equipos pueden proponer mejoras a las reglas base mediante Pull Requests al repositorio principal. Todas las mejoras serán evaluadas para su incorporación en la fábrica.
-
-# 🏗️ Web Starter Template — Fábrica de Sitios Web
-
-Este repositorio es un **template base reutilizable** para crear sitios web modernos con:
-
-- ✅ Next.js + App Router
-- ✅ TailwindCSS (JIT)
-- ✅ Reglas `.mdc` en `.cursor/rules/`
-- ✅ Contenido en Markdown (`/docs`)
-- ✅ Componentes reutilizables (`/components`)
-- ✅ Configuración para Vercel y Cloudflare
+Este repositorio es la base de la fábrica de sitios web Gard, desarrollada para garantizar rendimiento, escalabilidad, SEO de clase mundial y una experiencia UI/UX excepcional.
 
 ---
 
-## 🚀 Cómo usar este template
+## 📘 Reglas del Proyecto
 
-```bash
-npx degit Cryptobal/web-template mi-nueva-web
-cd mi-nueva-web
-pnpm install # o npm install
-pnpm dev     # o npm run dev
+Este repositorio obedece estrictamente las reglas definidas en [`.cursor.rules.md`](./.cursor.rules.md).
+
+**⚠️ Importante:**  
+Cursor y cualquier desarrollador humano **deben leer y aplicar esas reglas antes de modificar cualquier cosa.**
+
+---
+
+## 🚀 Estructura Principal del Repositorio
+
+/public               → Imágenes optimizadas (WebP)
+/content/blog_posts   → Artículos del blog en Markdown SEO-ready
+/docs                 → Documentación del proyecto
+/src
+├── components      → Componentes UI reutilizables
+├── pages           → Páginas del sitio (Next.js routing)
+├── config          → SEO global, metadatos, info del sitio
+├── lib             → Funciones auxiliares (formularios, validación, etc.)
+├── styles          → Tailwind o CSS Modules
+└── data            → JSON con navegación, industrias, etc.
+
+---
+
+## 📰 Blog Integrado
+
+El blog del sitio se genera automáticamente desde los archivos Markdown ubicados en:
+
+docs/blog_posts/
+
+Cada archivo contiene metadatos SEO estructurados en la cabecera (`frontmatter`):
+
+```md
+---
+title: "Título del artículo"
+slug: "titulo-del-articulo"
+date: "2024-01-25"
+description: "Resumen optimizado para motores de búsqueda."
+tags: ["seguridad", "guardias", "empresa de seguridad"]
+---
+
+📍 Esto permite generar:
+	•	/blog → Listado de artículos
+	•	/blog/[slug] → Página individual por artículo
+
+⸻
+
+🧪 Checklist antes del Deploy
+	•	✅ Títulos y metadescripciones SEO correctos en todas las páginas
+	•	✅ Lighthouse ≥ 90/100 en móvil
+	•	✅ Accesibilidad WCAG AA mínima
+	•	✅ Sitemap.xml actualizado
+	•	✅ Robots.txt configurado
+	•	✅ Formularios conectados a GA4 o Tag Manager
+	•	✅ Imágenes con lazy loading y en WebP
+	•	✅ Código limpio y sin duplicaciones
+
+⸻
+
+📈 Integraciones Estándar
+	•	✅ Google Analytics 4 (GA4)
+	•	✅ Google Tag Manager
+	•	✅ Google Search Console
+	•	✅ Meta Tags y Open Graph
+	•	✅ Despliegue con Vercel + optimización CDN vía Cloudflare
+	•	✅ Eventos de conversión para formularios y botones CTA
+
+⸻
+
+⚙️ Comandos de Desarrollo
+
+pnpm install     # Instala dependencias
+pnpm dev         # Levanta el entorno local
+pnpm build       # Genera build para producción
+
+## 🖼 Uso de Imágenes desde Cloudflare
+
+Todas las imágenes del sitio se cargan dinámicamente desde Cloudflare utilizando URLs optimizadas.
+
+- Evitar duplicación en `/public`
+- URLs se almacenan en: `src/data/images.ts`
+- No usar IDs sin procesar ni rutas absolutas al cargar imágenes.
+- Usar el componente `ImageCloudflare.tsx` para mantener compatibilidad y rendimiento.
+
+## 📮 Formularios Integrados
+
+Este sitio incluye dos formularios listos para ser reutilizados:
+
+- `/src/components/form/ContactForm.tsx` → Para la página de contacto
+- `/src/components/form/CotizarForm.tsx` → Para solicitar cotización
+
+Ambos están validados y preparados para integrarse con Google Tag Manager, eventos de conversión y correo.
+
+⸻
+
+🧠 Filosofía de la Fábrica
+
+Esta fábrica está diseñada para lanzar sitios con nivel de calidad mundial:
+✨ Rápidos, ✨ escalables, ✨ optimizados para SEO, ✨ con diseño moderno y ✨ sin errores de estructura.
+
+⸻
+
+Made with ❤️ por Carlos y su Fábrica de Sitios Web 🚀
